@@ -45,11 +45,11 @@ class FW_Option_Type_Popup extends FW_Option_Type {
 	protected function _render( $id, $option, $data ) {
 		unset( $option['attr']['name'], $option['attr']['value'] );
 
-		$option['attr']['data-for-js'] = base64_encode(json_encode(array(
+		$option['attr']['data-for-js'] = json_encode(array(
 			'title'   => ( $option['popup-title'] ) ? $option['popup-title'] : $option['label'],
 			'options' => $this->transform_options( $option['popup-options'] ),
 			'button'  => $option['button']
-		)));
+		));
 
 		if (!empty($data['value'])) {
 			if (is_array($data['value'])) {

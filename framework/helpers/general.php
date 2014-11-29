@@ -749,10 +749,7 @@ function fw_get_google_fonts() {
 		return FW_Cache::get($cache_key);
 	} catch (FW_Cache_Not_Found_Exception $e) {
 		$fonts = apply_filters('fw_google_fonts',
-			json_decode(
-				file_get_contents(dirname(__FILE__) .'/fw-google-fonts.json'),
-				true
-			)
+			include(dirname(__FILE__) .'/fw-google-fonts.json.php')
 		);
 
 		FW_Cache::set($cache_key, $fonts);
