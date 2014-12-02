@@ -1602,7 +1602,7 @@ final class _FW_Extensions_Manager
 			if (!FW_WP_Filesystem::mkdir_recursive($wp_fs_tmp_dir)) {
 				return new WP_Error(
 					$wp_error_id,
-					sprintf(__('Cannot create directory: %s', 'fw'), $wp_fs_tmp_dir)
+					sprintf(__('Cannot create temporary directory: %s', 'fw'), $wp_fs_tmp_dir)
 				);
 			}
 		}

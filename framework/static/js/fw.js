@@ -873,7 +873,7 @@ fw.getQueryString = function(name) {
 
 			// This is another fix for vertical scroll bar issue
 			$frame.css('overflow-y', 'hidden');
-        }
+		}
 	});
 
 })();

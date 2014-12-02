@@ -1,6 +1,6 @@
 /* thumb */
 .fw-option-type-multi-upload.images-only .thumbs-container {
-    font-size: 0;
+	font-size: 0;
 	line-height: 0;
 }
 .fw-option-type-multi-upload.images-only .thumb {
@@ -41,7 +41,7 @@
 	display: block;
 	background-color: #fff;
 	border-radius: 50%;
-    z-index: 10;
+	z-index: 10;
 }
 .fw-option-type-multi-upload.images-only .thumb.ui-sortable-helper a {
 	display: none;
@@ -59,7 +59,7 @@
 
 /* Option is set in right sidebar */
 .fw-force-xs .fw-option-type-multi-upload.images-only .thumb.no-image {
-    display: none;
+	display: none;
 }
 
 .fw-option-type-multi-upload.images-only .no-image-img {
