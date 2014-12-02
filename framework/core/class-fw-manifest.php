@@ -389,7 +389,7 @@ class FW_Theme_Manifest extends FW_Manifest
 		) as $manifest_key => $stylesheet_header) {
 			$header_value = trim($theme->get($stylesheet_header));
 
-			if (is_child_theme()) {
+			if ( is_child_theme() && $theme->parent() ) {
 				switch ($manifest_key) {
 					case 'version':
 					case 'uri':

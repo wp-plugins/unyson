@@ -90,6 +90,14 @@
 	.fw-extensions-list .fw-extensions-list-item td:last-child {
 		padding-bottom: 0;
 	}
+
+	.fw-extensions-list .fw-extensions-list-item .fw-text-center {
+		text-align: left;
+	}
+
+	body.rtl .fw-extensions-list .fw-extensions-list-item .fw-text-center {
+		text-align: right;
+	}
 }
 
 
@@ -129,10 +137,6 @@
 }
 
 @media (max-width: 782px) {
-	.fw-extensions-list .fw-extensions-list-item .fw-extension-disabled .fw-extension-disabled-panel .fw-text-right {
-		text-align: left;
-	}
-
 	.fw-extensions-list .fw-extensions-list-item.disabled > .inner {
 		min-height: 320px;
 	}

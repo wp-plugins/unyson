@@ -14,8 +14,6 @@ abstract class FW_Option_Type
 	/**
 	 * Overwrite this method to enqueue scripts and styles
 	 *
-	 * Enqueue scripts and styles in the _render() method is deprecated.
-	 *
 	 * This method would be abstract but was added after the framework release,
 	 * and to prevent fatal errors from new option types created by users we can't make it abstract.
 	 *
@@ -28,16 +26,6 @@ abstract class FW_Option_Type
 	 */
 	protected function _enqueue_static($id, $option, $data)
 	{
-		/**
-		 * @deprecated
-		 *
-		 * Call the _render() method to enqueue styles and scripts for option types created before this method was added
-		 *
-		 * For example this option type
-		 * https://github.com/ThemeFuse/Unyson/blob/e650bf083dde23ae2842344e70a16d5c335bf876/scratch-parent/framework-customizations/theme/shortcodes/table/includes/fw-option-type-table-builder/class-fw-option-type-table-builder.php#L13
-		 * is located in the theme and will remain there forever because the theme is not affected by the framework update
-		 */
-		$this->_render($id, $option, $data);
 	}
 
 	/**

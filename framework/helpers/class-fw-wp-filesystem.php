@@ -12,7 +12,7 @@ class FW_WP_Filesystem
 	 *      false - if user submitted wrong credentials
 	 *      true  - if we have filesystem access
 	 */
-	final public static function request_access($context, $url, $extra_fields = array())
+	final public static function request_access($context = null, $url = null, $extra_fields = array())
 	{
 		/** @var WP_Filesystem_Base $wp_filesystem */
 		global $wp_filesystem;
@@ -20,6 +20,10 @@ class FW_WP_Filesystem
 		if ($wp_filesystem) {
 			// already initialized (has access)
 			return true;
+		}
+
+		if (empty($url)) {
+			$url = fw_current_url();
 		}
 
 		if (get_filesystem_method() === 'direct') {
