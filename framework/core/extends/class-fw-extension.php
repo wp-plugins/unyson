@@ -432,6 +432,52 @@ abstract class FW_Extension
 		}
 	}
 
+	/**
+	 * Get extension's settings option value from the database
+	 *
+	 * @param string|null $option_id
+	 * @param null|mixed $default_value If no option found in the database, this value will be returned
+	 * @param null|bool $get_original_value Original value is that with no translations and other changes
+	 *
+	 * @return mixed|null
+	 */
+	final public function get_db_settings_option( $option_id = null, $default_value = null, $get_original_value = null ) {
+		return fw_get_db_ext_settings_option( $this->get_name(), $option_id, $default_value, $get_original_value );
+	}
+
+	/**
+	 * Set extension's setting option value in database
+	 *
+	 * @param string|null $option_id
+	 * @param mixed $value
+	 */
+	final public function set_db_settings_option( $option_id = null, $value ) {
+		fw_set_db_ext_settings_option( $this->get_name(), $option_id, $value );
+	}
+
+	/**
+	 * Get extension's data from the database
+	 *
+	 * @param string|null $multi_key The key of the data you want to get. null - all data
+	 * @param null|mixed $default_value If no option found in the database, this value will be returned
+	 * @param null|bool $get_original_value Original value is that with no translations and other changes
+	 *
+	 * @return mixed|null
+	 */
+	final public function get_db_data( $multi_key = null, $default_value = null, $get_original_value = null ) {
+		return fw_get_db_extension_data( $this->get_name(), $multi_key, $default_value, $get_original_value );
+	}
+
+	/**
+	 * Set some extension's data in database
+	 *
+	 * @param string|null $multi_key The key of the data you want to set. null - all data
+	 * @param mixed $value
+	 */
+	final public function set_db_data( $multi_key = null, $value ) {
+		fw_set_db_extension_data( $this->get_name(), $multi_key, $value );
+	}
+
 	final public function get_post_options($post_type)
 	{
 		return $this->get_options('posts/'. $post_type);
