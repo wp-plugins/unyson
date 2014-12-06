@@ -152,7 +152,7 @@ final class _FW_Extensions_Manager
 			wp_send_json_error();
 		}
 
-		if (FW_WP_Filesystem::has_direct_access()) {
+		if (FW_WP_Filesystem::has_direct_access(fw_get_framework_directory('/extensions'))) {
 			wp_send_json_success();
 		} else {
 			wp_send_json_error();
@@ -205,6 +205,7 @@ final class _FW_Extensions_Manager
 			return;
 		}
 
+		// a directory outside the plugin
 		$tmp_dir = FW_WP_Filesystem::real_path_to_filesystem_path(
 			fw_fix_path(WP_CONTENT_DIR) .'/tmp/fw-plugin-update-extensions-backup'
 		);
@@ -253,8 +254,9 @@ final class _FW_Extensions_Manager
 			return;
 		}
 
+		// a directory outside the plugin
 		$tmp_dir = FW_WP_Filesystem::real_path_to_filesystem_path(
-			fw_fix_path( WP_CONTENT_DIR ) . '/tmp/fw-plugin-update-extensions-backup'
+			fw_fix_path( WP_CONTENT_DIR ) .'/tmp/fw-plugin-update-extensions-backup'
 		);
 		$extensions_dir = FW_WP_Filesystem::real_path_to_filesystem_path(
 			fw_get_framework_directory( '/extensions' )
@@ -328,8 +330,8 @@ final class _FW_Extensions_Manager
 
 			$extensions = array();
 
-			foreach ($search_paths as $path) {
-				$this->read_extensions($path, $extensions);
+			foreach ($search_paths as $source => $path) {
+				$this->read_extensions($source, $path, $extensions);
 			}
 
 			FW_Cache::set($cache_key, $extensions);
@@ -340,11 +342,12 @@ final class _FW_Extensions_Manager
 
 	/**
 	 * used by $this->get_installed_extensions()
+	 * @param string $source
 	 * @param string $path
 	 * @param array $list
 	 * @param null|string $parent_extension_name
 	 */
-	private function read_extensions($path, &$list, $parent_extension_name = null)
+	private function read_extensions($source, $path, &$list, $parent_extension_name = null)
 	{
 		$paths = glob($path .'/*', GLOB_ONLYDIR | GLOB_NOSORT);
 
@@ -363,6 +366,7 @@ final class _FW_Extensions_Manager
 				));
 
 				$list[$extension_name] = array(
+					'source'   => $source,
 					'path'     => $extension_path,
 					'manifest' => $vars['manifest'],
 					'children' => array(),
@@ -379,6 +383,7 @@ final class _FW_Extensions_Manager
 			}
 
 			$this->read_extensions(
+				$source,
 				$extension_path .'/extensions',
 				$list,
 				$extension_name
@@ -386,11 +391,9 @@ final class _FW_Extensions_Manager
 		}
 	}
 
-	private function get_tmp_dir()
+	private function get_tmp_dir($append = '')
 	{
-		return FW_WP_Filesystem::real_path_to_filesystem_path(
-			fw_fix_path(WP_CONTENT_DIR) .'/tmp/fw-extension-download'
-		);
+		return apply_filters('fw_tmp_dir', fw_fix_path(WP_CONTENT_DIR) .'/tmp') . $append;
 	}
 
 	/**
@@ -733,10 +736,9 @@ final class _FW_Extensions_Manager
 						foreach ($parent_extensions as $parent_extension_name) {
 							$current_extension_path .= '/extensions/'. $parent_extension_name;
 
-							$activate_extensions[$parent_extension_name] = array();
-
 							if (isset($installed_extensions[$parent_extension_name])) {
 								// skip already installed extensions
+								$activate_extensions[$parent_extension_name] = array();
 								continue;
 							}
 
@@ -777,6 +779,8 @@ final class _FW_Extensions_Manager
 									$install_data['all'][$parent_extension_name]
 								)
 							);
+
+							$activate_extensions[$parent_extension_name] = array();
 
 							/**
 							 * Read again all extensions
@@ -880,10 +884,12 @@ final class _FW_Extensions_Manager
 				/** @var WP_Filesystem_Base $wp_filesystem */
 				global $wp_filesystem;
 
-				if ($wp_filesystem->exists($this->get_tmp_dir())) {
-					if ( ! $wp_filesystem->rmdir( $this->get_tmp_dir(), true ) ) {
+				$wp_fs_tmp_dir = FW_WP_Filesystem::real_path_to_filesystem_path($this->get_tmp_dir());
+
+				if ($wp_filesystem->exists($wp_fs_tmp_dir)) {
+					if ( ! $wp_filesystem->rmdir( $wp_fs_tmp_dir, true ) ) {
 						$skin->error(
-							sprintf( __( 'Cannot remove temporary directory: %s', 'fw' ), $this->get_tmp_dir() )
+							sprintf( __( 'Cannot remove temporary directory: %s', 'fw' ), $wp_fs_tmp_dir )
 						);
 						break;
 					}
@@ -900,6 +906,7 @@ final class _FW_Extensions_Manager
 				fw_render_view(dirname(__FILE__) .'/views/install-form.php', array(
 					'extension_titles' => $install_data['all'],
 					'list_page_link' => $this->get_link(),
+					'supported' => $supported
 				), false);
 
 				echo '</form>';
@@ -1587,7 +1594,7 @@ final class _FW_Extensions_Manager
 
 		// create temporary directory
 		{
-			$wp_fs_tmp_dir = $this->get_tmp_dir();
+			$wp_fs_tmp_dir = FW_WP_Filesystem::real_path_to_filesystem_path($this->get_tmp_dir());
 
 			if ($wp_filesystem->exists($wp_fs_tmp_dir)) {
 				// just in case it already exists, clear everything, it may contain old files
