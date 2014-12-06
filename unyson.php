@@ -3,7 +3,7 @@
  * Plugin Name: Unyson
  * Plugin URI: http://unyson.themefuse.com/
  * Description: A free drag & drop framework that comes with a bunch of built in extensions that will help you develop premium themes fast & easy.
- * Version: 2.1.1
+ * Version: 2.1.2
  * Author: ThemeFuse
  * Author URI: http://themefuse.com
  * License: GPL2+
@@ -83,4 +83,15 @@ require dirname( __FILE__ ) . '/framework/bootstrap.php';
 		load_plugin_textdomain( 'fw', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
 	}
 	add_action( 'plugins_loaded', '_action_fw_textdomain' );
+
+	/** @internal */
+	function _filter_fw_tmp_dir($dir) {
+		/**
+		 * Some users force WP_Filesystem to use the 'direct' method <?php define( 'FS_METHOD', 'direct' ); ?> and set chmod 777 to the unyson/ plugin.
+		 * By default tmp dir is WP_CONTENT_DIR.'/tmp' and WP_Filesystem can't create it with 'direct' method, then users can't download and install extensions.
+		 * In order to prevent this situation, create the temporary directory inside the plugin folder.
+		 */
+		return dirname(__FILE__) . '/tmp';
+	}
+	add_filter('fw_tmp_dir', '_filter_fw_tmp_dir');
 }
