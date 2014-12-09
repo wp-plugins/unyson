@@ -3,7 +3,7 @@ Contributors: unyson, themefusecom
 Tags: page builder, cms, grid, layout, responsive, back up, backup, db backup, dump, migrate, schedule, search engine optimization, seo, media, slideshow, shortcode, slide, slideshare, slideshow, google sitemaps, sitemaps, analytics, google analytics, calendar, event, events, google maps, learning, lessons, sidebars, breadcrumbs, review, portfolio
 Requires at least: 4.0.0
 Tested up to: 4.0.1
-Stable tag: 2.1.0
+Stable tag: 2.1.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,6 +27,8 @@ A simple and easy way to build a powerful website.
 * **Portfolio.** Portfolio has some pretty neat filtering animations.
 * **Feedback.** We've added a way for users to submit reviews and ratings for events, projects, etc.
 * **Learning.** Create courses, lessons and quizzes for your online training site.
+
+To get started, check out the [Scratch Theme](https://github.com/ThemeFuse/Scratch-Theme).
 
 **Get involved**
 
@@ -81,6 +83,19 @@ Yes; Unyson will work with any theme.
 
 
 == Changelog ==
+
+= 2.1.4 =
+* Improvements for the `fw_google_fonts` filter used to expand the list of available Google fonts. [#100](https://github.com/ThemeFuse/Unyson/issues/100)
+
+= 2.1.3 =
+* Multi-site: Only network administrator can install/remove/update extensions
+
+= 2.1.2 =
+* Minor fixes and improvements in the extensions installation process
+
+= 2.1.1 =
+* Added the `FW_Extension::(get|set)_db_(settings_option|data)()` methods
+* Added README.md for Github
 
 = 2.1.0 =
 * Moved major theme functionality from `framework-customizations/theme/` to https://github.com/ThemeFuse/Theme-Includes , because the theme must work when the plugin is not installed.

@@ -10,34 +10,39 @@ class FW_Option_Type_Typography extends FW_Option_Type
 	/*
 	 * Allowed fonts
 	 */
-	private static $fonts;
+	private $fonts;
 
 	/**
-	 * @internal
+	 * Returns fonts
+	 * @return array
 	 */
-	public static function _init()
+	public function get_fonts()
 	{
-		self::$fonts = array(
-			'standard' => array(
-				"Arial",
-				"Verdana",
-				"Trebuchet",
-				"Georgia",
-				"Times New Roman",
-				"Tohama",
-				"Palatino",
-				"Helvetica",
-				"Calibri",
-				"Myriad Pro",
-				"Lucida",
-				"Arial Black",
-				"Gill Sans",
-				"Geneva",
-				"Impact",
-				"Serif"
-			),
-			'google' => fw_get_google_fonts()
-		);
+		if($this->fonts === null) {
+			$this->fonts = array(
+				'standard' => array(
+					"Arial",
+					"Verdana",
+					"Trebuchet",
+					"Georgia",
+					"Times New Roman",
+					"Tohama",
+					"Palatino",
+					"Helvetica",
+					"Calibri",
+					"Myriad Pro",
+					"Lucida",
+					"Arial Black",
+					"Gill Sans",
+					"Geneva",
+					"Impact",
+					"Serif"
+				),
+				'google' => fw_get_google_fonts()
+			);
+		}
+
+		return $this->fonts;
 	}
 
 	/**
@@ -58,8 +63,9 @@ class FW_Option_Type_Typography extends FW_Option_Type
 			array('jquery', 'underscore', 'fw', 'fw-selectize'),
 			fw()->manifest->get_version()
 		);
-
-		wp_localize_script('fw-option-' . $this->get_type(), 'googleFonts', self::$fonts['google']);
+		$fw_typography_fonts = $this->get_fonts();
+		wp_localize_script('fw-option-' . $this->get_type(), 'fw_typography_fonts', $fw_typography_fonts);
+		wp_localize_script('fw-option-' . $this->get_type(), 'googleFonts', $fw_typography_fonts['google']);
 	}
 
 	/**
@@ -71,7 +77,7 @@ class FW_Option_Type_Typography extends FW_Option_Type
 			'id' => $id,
 			'option' => $option,
 			'data' => $data,
-			'fonts' => self::$fonts
+			'fonts' => $this->get_fonts()
 		));
 	}
 
