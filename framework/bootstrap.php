@@ -1,24 +1,11 @@
 <?php if (!defined('ABSPATH')) die('Forbidden');
 
-/**
- * Loads the framework
- * Include this file in theme/functions.php
- */
-
 if (defined('FW')) {
 	/**
 	 * The framework is already loaded.
 	 */
-	return;
 } else {
-	/**
-	 * Tells that the framework is loaded.
-	 * You can check if this constant is defined to be sure the file is not accessed directly from browser.
-	 */
 	define('FW', true);
-}
-
-if (!function_exists('_action_init_framework')):
 
 	/**
 	 * Load the framework on 'after_setup_theme' action when the theme information is available
@@ -106,5 +93,4 @@ if (!function_exists('_action_init_framework')):
 		 */
 		do_action('fw_init');
 	}
-
-endif;
+}

@@ -29,14 +29,25 @@ class FW_Extension_Update extends FW_Extension
 	 */
 	protected function _init()
 	{
-		if (current_user_can('update_themes') || current_user_can('update_plugins')) {
-			$this->context = get_template_directory();
+		{
+			$has_access = (current_user_can('update_themes') || current_user_can('update_plugins'));
 
-			$this->add_actions();
-			$this->add_filters();
-		} else {
-			return false; // prevent child extensions activation
+			if ($has_access) {
+				if (is_multisite() && !is_network_admin()) {
+					// only network admin can change files that affects the entire network
+					$has_access = false;
+				}
+			}
+
+			if (!$has_access) {
+				return false; // prevent child extensions activation
+			}
 		}
+
+		$this->context = get_template_directory();
+
+		$this->add_actions();
+		$this->add_filters();
 	}
 
 	private function add_actions()
@@ -62,7 +73,7 @@ class FW_Extension_Update extends FW_Extension
 	private function get_wp_fs_tmp_dir()
 	{
 		return FW_WP_Filesystem::real_path_to_filesystem_path(
-			fw_fix_path(WP_CONTENT_DIR) .'/tmp/fw-ext-update'
+			apply_filters('fw_tmp_dir', fw_fix_path(WP_CONTENT_DIR) .'/tmp')
 		);
 	}
 
@@ -279,14 +290,14 @@ class FW_Extension_Update extends FW_Extension
 
 		if ($wp_filesystem->exists($file_path)) {
 			if (!$wp_filesystem->delete($file_path)) {
-				trigger_error(__('Cannot delete:', 'fw') . ' ' . $file_path, E_USER_WARNING);
+				trigger_error(__('Cannot delete: ', 'fw') . $file_path, E_USER_WARNING);
 			}
 		}
 
 		if ($enable) {
 			// Create maintenance file to signal that we are upgrading
 			if (!$wp_filesystem->put_contents($file_path, '<?php $upgrading = ' . time() . '; ?>', FS_CHMOD_FILE)) {
-				trigger_error(__('Cannot create:', 'fw') . ' ' . $file_path, E_USER_WARNING);
+				trigger_error(__('Cannot create: ', 'fw') . $file_path, E_USER_WARNING);
 			}
 		}
 	}
@@ -364,13 +375,13 @@ class FW_Extension_Update extends FW_Extension
 				if ($wp_filesystem->exists($tmp_download_dir)) {
 					// just in case it already exists, clear everything, it may contain old files
 					if (!$wp_filesystem->rmdir($tmp_download_dir, true)) {
-						$error = __('Cannot remove old temporary directory:', 'fw') . ' ' . $tmp_download_dir;
+						$error = __('Cannot remove old temporary directory: ', 'fw') . $tmp_download_dir;
 						break;
 					}
 				}
 
 				if (!FW_WP_Filesystem::mkdir_recursive($tmp_download_dir)) {
-					$error = __('Cannot create directory:', 'fw') . ' ' . $tmp_download_dir;
+					$error = __('Cannot create directory: ', 'fw') . $tmp_download_dir;
 					break;
 				}
 			}
@@ -396,7 +407,7 @@ class FW_Extension_Update extends FW_Extension
 				{
 					$dir_files = $wp_filesystem->dirlist($wp_fs_destination_dir, true);
 					if ($dir_files === false) {
-						$error =__('Cannot access directory:', 'fw') . ' ' . $wp_fs_destination_dir;
+						$error =__('Cannot access directory: ', 'fw') . $wp_fs_destination_dir;
 						break;
 					}
 
@@ -415,7 +426,7 @@ class FW_Extension_Update extends FW_Extension
 						$file_path = $wp_fs_destination_dir .'/'. $file['name'];
 
 						if (!$wp_filesystem->delete($file_path, true, $file['type'])) {
-							$error = __('Cannot remove:', 'fw') . ' ' . $file_path;
+							$error = __('Cannot remove: ', 'fw') . $file_path;
 							break 2;
 						}
 					}
@@ -425,7 +436,7 @@ class FW_Extension_Update extends FW_Extension
 				{
 					$dir_files = $wp_filesystem->dirlist($downloaded_dir, true);
 					if ($dir_files === false) {
-						$error = __('Cannot access directory:', 'fw') . ' ' . $downloaded_dir;
+						$error = __('Cannot access directory: ', 'fw') . $downloaded_dir;
 						break;
 					}
 
@@ -525,7 +536,7 @@ class FW_Extension_Update extends FW_Extension
 		$source_ext_dirs = $wp_filesystem->dirlist($source_dir, true);
 		if ($source_ext_dirs === false) {
 			return new WP_Error($wp_error_id,
-				__('Cannot access directory:', 'fw') . ' ' . $source_dir
+				__('Cannot access directory: ', 'fw') . $source_dir
 			);
 		}
 
@@ -548,7 +559,7 @@ class FW_Extension_Update extends FW_Extension
 				if (!$wp_filesystem->exists($destination_extension_dir)) {
 					if (!FW_WP_Filesystem::mkdir_recursive($destination_extension_dir)) {
 						return new WP_Error($wp_error_id,
-							__('Cannot create directory:', 'fw') . ' ' . $destination_extension_dir
+							__('Cannot create directory: ', 'fw') . $destination_extension_dir
 						);
 					}
 				}
@@ -558,7 +569,7 @@ class FW_Extension_Update extends FW_Extension
 					$dest_ext_files = $wp_filesystem->dirlist($destination_extension_dir, true);
 					if ($dest_ext_files === false) {
 						return new WP_Error($wp_error_id,
-							__('Cannot access directory:', 'fw') . ' ' . $destination_extension_dir
+							__('Cannot access directory: ', 'fw') . $destination_extension_dir
 						);
 					}
 
@@ -578,7 +589,7 @@ class FW_Extension_Update extends FW_Extension
 
 						if (!$wp_filesystem->delete($dest_ext_file_path, true, $dest_ext_file['type'])) {
 							return new WP_Error($wp_error_id,
-								__('Cannot delete:', 'fw') . ' ' . $dest_ext_file_path
+								__('Cannot delete: ', 'fw') . $dest_ext_file_path
 							);
 						}
 					}
@@ -590,7 +601,7 @@ class FW_Extension_Update extends FW_Extension
 				$source_ext_files = $wp_filesystem->dirlist($source_extension_dir, true);
 				if ($source_ext_files === false) {
 					return new WP_Error($wp_error_id,
-						__('Cannot access directory:', 'fw') . ' ' . $source_extension_dir
+						__('Cannot access directory: ', 'fw') . $source_extension_dir
 					);
 				}
 

@@ -8,6 +8,7 @@
  * @var array $lists
  * @var array $nonces
  * @var string $default_thumbnail
+ * @var bool $can_install
  */
 
 $is_active = (bool)fw()->extensions->get($name);
@@ -77,7 +78,16 @@ if (isset($lists['available'][$name])) {
 						unset( $_links );
 					}
 					?>
-					<?php if ( isset($lists['supported'][$name]) && (($installed_data && !$is_active) || $available_data) ): ?>
+					<?php
+					if (
+						!$is_active // do not show the "Compatible" text is extension is already active
+						&&
+						(
+							isset($lists['supported'][$name]) // is listed in the supported extensions list in theme manifest
+							||
+							($installed_data && $installed_data['source'] !== 'framework') // is located in the theme
+						)
+					): ?>
 						<p><em><strong><span class="dashicons dashicons-yes"></span> <?php _e('Compatible', 'fw') ?></strong> <?php _e('with your current theme', 'fw') ?></em></p>
 					<?php endif; ?>
 				</td>
@@ -93,6 +103,14 @@ if (isset($lists['available'][$name])) {
 								<?php wp_nonce_field($nonces['activate']['action'], $nonces['activate']['name']); ?>
 								<input class="button" type="submit" value="<?php esc_attr_e('Activate', 'fw'); ?>"/>
 							</form>
+							<?php
+							/**
+							 * Do not show the "Delete extension" button if the extension is not in the available list.
+							 * If you delete such extension you will not be able to install it back.
+							 * Most often these will be extensions located in the theme.
+							 */
+							if ($can_install && $available_data):
+							?>
 							<form action="<?php echo esc_attr($link) ?>&sub-page=delete&extension=<?php echo esc_attr($name) ?>"
 							      method="post"
 							      class="fw-extension-ajax-form"
@@ -102,8 +120,9 @@ if (isset($lists['available'][$name])) {
 									<a href="#" onclick="jQuery(this).closest('form').submit(); return false;" data-remove-extension="<?php echo esc_attr($name) ?>" ><?php _e('Remove', 'fw'); ?></a>
 								</p>
 							</form>
+							<?php endif; ?>
 						</div>
-					<?php elseif ($available_data): ?>
+					<?php elseif ($can_install && $available_data): ?>
 						<form action="<?php echo esc_attr($link) ?>&sub-page=install&extension=<?php echo esc_attr($name) ?>" method="post" class="fw-extension-ajax-form">
 							<?php wp_nonce_field($nonces['install']['action'], $nonces['install']['name']); ?>
 							<input type="submit" class="button" value="<?php esc_attr_e('Download', 'fw') ?>">
@@ -151,11 +170,18 @@ if (isset($lists['available'][$name])) {
 
 										if ( ! empty( $req_data['min_version'] ) ) {
 											if (!version_compare($req_data['min_version'], $wp_version, '<=')) {
-												$requirements[] = sprintf(
-													__('You need to update WordPress to %s: %s', 'fw'),
-													$req_data['min_version'],
-													fw_html_tag('a', array('href' => self_admin_url('update-core.php')), __('Update WordPress', 'fw'))
-												);
+												if ($can_install) {
+													$requirements[] = sprintf(
+														__( 'You need to update WordPress to %s: %s', 'fw' ),
+														$req_data['min_version'],
+														fw_html_tag( 'a', array( 'href' => self_admin_url( 'update-core.php' ) ), __( 'Update WordPress', 'fw' ) )
+													);
+												} else {
+													$requirements[] = sprintf(
+														__( 'WordPress needs to be updated to %s', 'fw' ),
+														$req_data['min_version']
+													);
+												}
 											}
 										}
 
@@ -175,14 +201,22 @@ if (isset($lists['available'][$name])) {
 
 										if ( ! empty( $req_data['min_version'] ) ) {
 											if (!version_compare($req_data['min_version'], fw()->manifest->get_version(), '<=')) {
-												$requirements[] = sprintf(
-													__('You need to update %s to %s: %s', 'fw'),
-													fw()->manifest->get_name(),
-													$req_data['min_version'],
-													fw_html_tag('a', array('href' => self_admin_url('update-core.php')),
-														sprintf(__('Update %s', 'fw'), fw()->manifest->get_name())
-													)
-												);
+												if ($can_install) {
+													$requirements[] = sprintf(
+														__( 'You need to update %s to %s: %s', 'fw' ),
+														fw()->manifest->get_name(),
+														$req_data['min_version'],
+														fw_html_tag( 'a', array( 'href' => self_admin_url( 'update-core.php' ) ),
+															sprintf( __( 'Update %s', 'fw' ), fw()->manifest->get_name() )
+														)
+													);
+												} else {
+													$requirements[] = sprintf(
+														__( '%s needs to be updated to %s', 'fw' ),
+														fw()->manifest->get_name(),
+														$req_data['min_version']
+													);
+												}
 											}
 										}
 
@@ -205,14 +239,22 @@ if (isset($lists['available'][$name])) {
 
 												if ( ! empty( $req_ext_data['min_version'] ) ) {
 													if (!version_compare($req_ext_data['min_version'], $ext->manifest->get_version(), '<=')) {
-														$requirements[] = sprintf(
-															__('You need to update the %s extension to %s: %s', 'fw'),
-															$ext->manifest->get_name(),
-															$req_ext_data['min_version'],
-															fw_html_tag('a', array('href' => self_admin_url('update-core.php')),
-																sprintf(__('Update %s', 'fw'), $ext->manifest->get_name())
-															)
-														);
+														if ($can_install) {
+															$requirements[] = sprintf(
+																__('You need to update the %s extension to %s: %s', 'fw'),
+																$ext->manifest->get_name(),
+																$req_ext_data['min_version'],
+																fw_html_tag('a', array('href' => self_admin_url('update-core.php')),
+																	sprintf(__('Update %s', 'fw'), $ext->manifest->get_name())
+																)
+															);
+														} else {
+															$requirements[] = sprintf(
+																__('The %s extension needs to be updated to %s', 'fw'),
+																$ext->manifest->get_name(),
+																$req_ext_data['min_version']
+															);
+														}
 													}
 												}
 
@@ -240,14 +282,14 @@ if (isset($lists['available'][$name])) {
 													<?php
 													$requirements[] = ob_get_clean();
 												} else {
-													if (isset($lists['available'][$req_ext])) {
+													if ($can_install && isset($lists['available'][$req_ext])) {
 														$ext_title = $lists['available'][ $req_ext ]['name'];
 
 														$requirements[] = sprintf(
 															__( 'The %s extension is not installed: %s', 'fw' ),
 															$ext_title,
-															fw_html_tag('a', array('href' => $link .'&sub-page=install&extension='. $req_ext),
-																sprintf(__('Install %s', 'fw'), $ext_title)
+															fw_html_tag( 'a', array( 'href' => $link . '&sub-page=install&extension=' . $req_ext ),
+																sprintf( __( 'Install %s', 'fw' ), $ext_title )
 															)
 														);
 													} else {
@@ -274,7 +316,11 @@ if (isset($lists['available'][$name])) {
 								);
 								unset($requirements);
 								?>"><?php _e('View Requirements', 'fw') ?></a>
-								&nbsp; <p class="fw-visible-xs-block"></p><a href="<?php echo esc_attr($link) ?>&sub-page=delete&extension=<?php echo esc_attr($name) ?>" class="button" ><?php _e('Remove', 'fw'); ?></a>
+								&nbsp; <p class="fw-visible-xs-block"></p><?php
+									if ($can_install):
+										?><a href="<?php echo esc_attr($link) ?>&sub-page=delete&extension=<?php echo esc_attr($name) ?>" class="button" ><?php _e('Remove', 'fw'); ?></a><?php
+									endif;
+								?>
 							</div>
 						</div>
 					</div>
