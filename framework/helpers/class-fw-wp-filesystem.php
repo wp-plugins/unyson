@@ -82,9 +82,49 @@ class FW_WP_Filesystem
 	}
 
 	/**
+	 * @return array {base_dir_real_path => base_dir_wp_filesystem_path}
+	 */
+	public static function get_base_dirs_map()
+	{
+		/** @var WP_Filesystem_Base $wp_filesystem */
+		global $wp_filesystem;
+
+		if (!$wp_filesystem) {
+			trigger_error('Filesystem is not available', E_USER_ERROR);
+		}
+
+		try {
+			$cache_key = 'fw_wp_filesystem/base_dirs_map';
+
+			return FW_Cache::get($cache_key);
+		} catch (FW_Cache_Not_Found_Exception $e) {
+			// code from $wp_filesystem->wp_themes_dir()
+			{
+				$themes_dir = get_theme_root();
+
+				// Account for relative theme roots
+				if ( '/themes' == $themes_dir || ! is_dir( $themes_dir ) ) {
+					$themes_dir = WP_CONTENT_DIR . $themes_dir;
+				}
+			}
+
+			$dirs = array(
+				fw_fix_path(ABSPATH)        => fw_fix_path($wp_filesystem->abspath()),
+				fw_fix_path(WP_CONTENT_DIR) => fw_fix_path($wp_filesystem->wp_content_dir()),
+				fw_fix_path(WP_PLUGIN_DIR)  => fw_fix_path($wp_filesystem->wp_plugins_dir()),
+				fw_fix_path($themes_dir)    => fw_fix_path($wp_filesystem->wp_themes_dir()),
+			);
+
+			FW_Cache::set($cache_key, $dirs);
+
+			return $dirs;
+		}
+	}
+
+	/**
 	 * Convert real file path to WP Filesystem path
 	 * @param string $real_path
-	 * @return string
+	 * @return string|false
 	 */
 	final public static function real_path_to_filesystem_path($real_path) {
 		/** @var WP_Filesystem_Base $wp_filesystem */
@@ -95,18 +135,27 @@ class FW_WP_Filesystem
 		}
 
 		$real_path = fw_fix_path($real_path);
-		$real_abspath = fw_fix_path(ABSPATH);
-		$wp_filesystem_abspath = fw_fix_path($wp_filesystem->abspath());
 
-		$relative_path = preg_replace('/^'. preg_quote($real_abspath, '/') .'/', '', $real_path);
+		foreach (self::get_base_dirs_map() as $base_real_path => $base_wp_filesystem_path) {
+			$prefix_regex = '/^'. preg_quote($base_real_path, '/') .'/';
 
-		return $wp_filesystem_abspath . $relative_path;
+			// check if path is inside base path
+			if (!preg_match($prefix_regex, $real_path)) {
+				continue;
+			}
+
+			$relative_path = preg_replace($prefix_regex, '', $real_path);
+
+			return $base_wp_filesystem_path . $relative_path;
+		}
+
+		return false;
 	}
 
 	/**
 	 * Convert WP Filesystem path to real file path
 	 * @param string $wp_filesystem_path
-	 * @return string
+	 * @return string|false
 	 */
 	final public static function filesystem_path_to_real_path($wp_filesystem_path) {
 		/** @var WP_Filesystem_Base $wp_filesystem */
@@ -117,12 +166,21 @@ class FW_WP_Filesystem
 		}
 
 		$wp_filesystem_path = fw_fix_path($wp_filesystem_path);
-		$wp_filesystem_abspath = fw_fix_path($wp_filesystem->abspath());
-		$real_abspath = fw_fix_path(ABSPATH);
 
-		$relative_path = preg_replace('/^'. preg_quote($wp_filesystem_abspath, '/') .'/', '', $wp_filesystem_path);
+		foreach (self::get_base_dirs_map() as $base_real_path => $base_wp_filesystem_path) {
+			$prefix_regex = '/^'. preg_quote($base_wp_filesystem_path, '/') .'/';
 
-		return $real_abspath . $relative_path;
+			// check if path is inside base path
+			if (!preg_match($prefix_regex, $wp_filesystem_path)) {
+				continue;
+			}
+
+			$relative_path = preg_replace($prefix_regex, '', $wp_filesystem_path);
+
+			return $base_real_path . $relative_path;
+		}
+
+		return false;
 	}
 
 	/**
@@ -169,36 +227,46 @@ class FW_WP_Filesystem
 
 		$wp_filesystem_dir_path = fw_fix_path($wp_filesystem_dir_path);
 
-		$path = '';
-		$check_if_exists = true;
-		$loop_counter = 1;
-		foreach (explode('/', $wp_filesystem_dir_path) as $dir_name) {
-			if (empty($dir_name)) {
-				if ($loop_counter === 1) {
-					/**
-					 * It's a unix style path staring with '/' -> ''
-					 * On windows it starts with 'C:/' -> 'C:'
-					 */
-					$path = '/';
-				} else {
-					trigger_error('Invalid path: '. $wp_filesystem_dir_path, E_USER_WARNING);
-					return false;
-				}
-			} elseif ($loop_counter === 2 && $path === '/') {
-				// prevent multiple slash prefix '//var/www'
-				$path = '';
+		$path = false;
+
+		foreach (self::get_base_dirs_map() as $base_real_path => $base_wp_filesystem_path) {
+			$prefix_regex = '/^'. preg_quote($base_wp_filesystem_path, '/') .'/';
+
+			// check if path is inside base path
+			if (!preg_match($prefix_regex, $wp_filesystem_dir_path)) {
+				continue;
 			}
 
-			$path .= ($loop_counter === 1 ? '' : '/') . $dir_name;
+			$path = $base_wp_filesystem_path;
+			break;
+		}
 
-			$loop_counter++;
+		if (!$path) {
+			trigger_error(
+				sprintf(
+					__('Cannot create directory "%s". It must be inside "%s"', 'fw'),
+					$wp_filesystem_dir_path,
+					implode(__('" or "', 'fw'), self::get_base_dirs_map())
+				),
+				E_USER_WARNING
+			);
+			return false;
+		}
+
+		$rel_path = preg_replace('/^'. preg_quote($path, '/') .'/', '', $wp_filesystem_dir_path);
+
+		// improvement: do not check directory for existence if it's known that sure it doesn't exist
+		$check_if_exists = true;
+
+		foreach (explode('/', ltrim($rel_path, '/')) as $dir_name) {
+			$path .= '/' . $dir_name;
 
 			if ($check_if_exists) {
 				if ($wp_filesystem->is_dir($path)) {
 					// do nothing if exists
 					continue;
 				} else {
-					// do not check anymore, next directories sure does not exists
+					// do not check anymore, next directories sure doesn't exist
 					$check_if_exists = false;
 				}
 			}
