@@ -19,7 +19,15 @@ final class _FW_Component_Extensions
 
 	/**
 	 * Active extensions
-	 * Only this extensions should be available for other, inactive extensions =
+	 *
+	 * On every extension activation, it will be pushed at the end of this array.
+	 * The extensions order is important when including files.
+	 * If extension A requires extension B, extension B is activated before extension A,
+	 * and all files of the extension B (hooks.php, static.php, etc.) must be included before extension A
+	 * For e.g. extension A may have in static.php:
+	 * wp_enqueue_script( 'ext-A-script', 'script.js', array( 'ext-B-script' ) );
+	 * so 'ext-B-script' must be registered before 'ext-A-script'
+	 *
 	 * @var FW_Extension[] { 'extension_name' => instance }
 	 */
 	private static $active_extensions = array();
@@ -73,15 +81,7 @@ final class _FW_Component_Extensions
 	 */
 	public function _get_db_active_extensions($extension_name = null)
 	{
-		try {
-			$cache_key = 'fw_db_active_extensions';
-
-			$extensions = FW_Cache::get($cache_key);
-		} catch (FW_Cache_Not_Found_Exception $e) {
-			$extensions = get_option($this->_get_active_extensions_db_option_name(), array());
-
-			FW_Cache::set($cache_key, $extensions);
-		}
+		$extensions = get_option($this->_get_active_extensions_db_option_name(), array());
 
 		if ($extension_name) {
 			return isset($extensions[$extension_name]);
