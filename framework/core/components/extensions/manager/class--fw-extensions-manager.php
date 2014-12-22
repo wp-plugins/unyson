@@ -1234,6 +1234,10 @@ final class _FW_Extensions_Manager
 			'link_extension'  => $link .'&sub-page=extension',
 			'extension_title' => $extension_title,
 			'tab'             => $tab,
+			'is_supported'    =>
+				fw()->theme->manifest->get('supported_extensions/'. $extension_name, false) !== false
+				||
+				$installed_extensions[$extension_name]['source'] !== 'framework'
 		), false);
 
 		unset($installed_extensions);
@@ -1556,6 +1560,8 @@ final class _FW_Extensions_Manager
 		 */
 		$extension = $data['data']['extension'];
 
+		do_action('fw_extension_settings_form_render:'. $extension->get_name());
+
 		echo fw_html_tag('input', array(
 			'type'  => 'hidden',
 			'name'  => 'fw_extension_name',
@@ -1641,7 +1647,7 @@ final class _FW_Extensions_Manager
 
 		$data['redirect'] = fw_current_url();
 
-		do_action('fw_extension_settings_form_saved', $extension->get_name(), $options_before_save);
+		do_action('fw_extension_settings_form_saved:'. $extension->get_name(), $options_before_save);
 
 		return $data;
 	}
@@ -1895,26 +1901,24 @@ final class _FW_Extensions_Manager
 				);
 			}
 
-			if (empty($destination_files)) {
-				// directory is empty, nothing to remove
-				return;
-			}
+			if (!empty($destination_files)) {
+				// the directory contains some files, delete everything
+				foreach ($destination_files as $file) {
+					if ($file['name'] === 'extensions' && $file['type'] === 'd') {
+						// do not touch the extensions/ directory
+						continue;
+					}
 
-			foreach ($destination_files as $file) {
-				if ($file['name'] === 'extensions' && $file['type'] === 'd') {
-					// do not touch the extensions/ directory
-					continue;
+					if (!$wp_filesystem->delete($destination_wp_fs_dir .'/'. $file['name'], true, $file['type'])) {
+						return new WP_Error(
+							$wp_error_id,
+							sprintf(__('Cannot delete "%s".', 'fw'), $destination_wp_fs_dir .'/'. $file['name'])
+						);
+					}
 				}
 
-				if (!$wp_filesystem->delete($destination_wp_fs_dir .'/'. $file['name'], true, $file['type'])) {
-					return new WP_Error(
-						$wp_error_id,
-						sprintf(__('Cannot delete "%s".', 'fw'), $destination_wp_fs_dir .'/'. $file['name'])
-					);
-				}
+				unset($destination_files);
 			}
-
-			unset($destination_files);
 		} else {
 			if (!FW_WP_Filesystem::mkdir_recursive($destination_wp_fs_dir)) {
 				return new WP_Error(
