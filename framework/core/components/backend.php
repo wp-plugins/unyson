@@ -762,7 +762,7 @@ final class _FW_Component_Backend
 				'<script type="text/javascript">' .
 				'jQuery(function($){' .
 				'  fwEvents.one("fw:options:init", function(){' .
-				'    var $form = $("#fw_form_fw_settings");'.
+				'    var $form = $("form.fw_form_fw_settings:first");'.
 				'    var inputName = "'. esc_js($focus_tab_input_name) .'";'.
 				'    $form.on("click", ".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a", function(){'.
 				'      var tabId = $(this).attr("href").replace(/^\\#/, "");'.
@@ -780,6 +780,9 @@ final class _FW_Component_Backend
 				'          .closest(".fw-options-tabs-wrapper").parent().closest(".fw-options-tabs-wrapper")'.
 				'          .find("> .fw-options-tabs-list > ul > li > a[href=\'#"+ $tabLink.closest(".fw-options-tab").attr("id") +"\']");'.
 				'      }'.
+				'      '.
+				'      /* click again on focus tab to update the input value */'.
+				'      $(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ focusTabId +"\']").trigger("click");;'.
 				'    }, 200);' .
 				'  });' .
 				'});' .

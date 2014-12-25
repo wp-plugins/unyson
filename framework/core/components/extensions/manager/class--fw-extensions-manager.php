@@ -48,8 +48,7 @@ final class _FW_Extensions_Manager
 			add_action('network_admin_menu', array($this, '_action_admin_menu'));
 			add_action('admin_footer', array($this, '_action_admin_footer'));
 			add_action('admin_enqueue_scripts', array($this, '_action_enqueue_menu_icon_style'));
-			// as late as possible, but to be able to make redirects (content not started)
-			add_action('current_screen', array($this, '_action_check_if_plugin_was_activated'), 100);
+			add_action('fw_after_plugin_activate', array($this, '_action_after_plugin_activate'), 100);
 			add_action('after_switch_theme', array($this, '_action_theme_switch'));
 
 			if ($this->can_install()) {
@@ -218,18 +217,8 @@ final class _FW_Extensions_Manager
 	/**
 	 * @internal
 	 */
-	public function _action_check_if_plugin_was_activated()
+	public function _action_after_plugin_activate()
 	{
-		{
-			$option_name = '_fw_plugin_activated';
-
-			if (!get_option($option_name)) {
-				return;
-			}
-
-			delete_option($option_name);
-		}
-
 		$this->activate_theme_extensions();
 		$this->activate_extensions_if_exists(
 			array_fill_keys(
@@ -1555,6 +1544,11 @@ final class _FW_Extensions_Manager
 				}
 			}
 
+			// add extensions that requires deactivated extensions
+			{
+				$this->collect_extensions_that_requires($deactivated_extensions, $deactivated_extensions);
+			}
+
 			// add not used extensions for deactivation
 			{
 				$not_used_extensions = array_fill_keys(array_keys(array_diff_key(
@@ -2447,5 +2441,46 @@ final class _FW_Extensions_Manager
 		);
 
 		return $errors;
+	}
+
+	/**
+	 * @param array $collected The found extensions {'extension_name' => array()}
+	 * @param array $extensions {'extension_name' => array()}
+	 * @param bool $check_all Check all extensions or only active extensions
+	 */
+	private function collect_extensions_that_requires(&$collected, $extensions, $check_all = false)
+	{
+		if (empty($extensions)) {
+			return;
+		}
+
+		$found_extensions = array();
+
+		foreach ($this->get_installed_extensions() as $extension_name => $extension_data) {
+			if (isset($collected[$extension_name])) {
+				continue;
+			}
+
+			if (!$check_all) {
+				if (!fw_ext($extension_name)) {
+					continue;
+				}
+			}
+
+			if (
+				array_intersect_key(
+					$extensions,
+					fw_akg(
+						'requirements/extensions',
+						$extension_data['manifest'],
+						array()
+					)
+				)
+			) {
+				$found_extensions[$extension_name] = $collected[$extension_name] = array();
+			}
+		}
+
+		$this->collect_extensions_that_requires($collected, $found_extensions, $check_all);
 	}
 }
