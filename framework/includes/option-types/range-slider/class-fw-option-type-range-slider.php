@@ -4,9 +4,9 @@
 
 /**
  * Slider
- * -----*--
+ * -*==*---
  */
-class FW_Option_Type_Slider extends FW_Option_Type {
+class FW_Option_Type_Range_Slider extends FW_Option_Type {
 
 	/**
 	 * @internal
@@ -43,15 +43,20 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 	}
 
 	public function get_type() {
-		return 'slider';
+		return 'range-slider';
 	}
 
 	/**
 	 * @internal
 	 */
 	protected function _render( $id, $option, $data ) {
-		$option['properties']['type'] = 'single';
-		$option['properties']['from'] = isset( $data['value'] ) ? $data['value'] : $option['value'];
+		$option['properties']['type'] = 'double';
+		$option['properties']['from'] = ( isset( $data['value']['from'] ) ) ? $data['value']['from'] : $option['value']['from'];
+		$option['properties']['to']   = ( isset( $data['value']['to'] ) ) ? $data['value']['to'] : $option['value']['to'];
+
+		if ($option['properties']['from'] > $option['properties']['to']) {
+			$option['properties']['from'] = $option['properties']['to'];
+		}
 
 		$option['attr']['data-fw-irs-options'] = json_encode(
 			$this->default_properties($option['properties'])
@@ -61,7 +66,7 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 			'id'     => $id,
 			'option' => $option,
 			'data'   => $data,
-			'value'  => $data['value']
+			'value'  => implode(';', (array)$data['value'])
 		) );
 	}
 
@@ -78,7 +83,10 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 	 */
 	protected function _get_defaults() {
 		return array(
-			'value'      => 0,
+			'value' => array(
+				'from' => 0,
+				'to'   => 0,
+			),
 			'properties' => $this->default_properties(), // https://github.com/IonDen/ion.rangeSlider#settings
 		);
 	}
@@ -89,9 +97,12 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 	protected function _get_value_from_input( $option, $input_value ) {
 		$input_values = array_map( 'intval', explode( ';', $input_value ) );
 
-		return $input_values[0];
+		return array(
+			'from' => $input_values[0],
+			'to'   => $input_values[1],
+		);
 	}
 
 }
 
-FW_Option_Type::register( 'FW_Option_Type_Slider' );
+FW_Option_Type::register( 'FW_Option_Type_Range_Slider' );
