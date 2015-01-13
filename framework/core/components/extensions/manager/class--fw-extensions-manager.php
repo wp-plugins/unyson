@@ -180,7 +180,7 @@ final class _FW_Extensions_Manager
 	 * Extensions available for download
 	 * @return array {name => data}
 	 */
-	public function get_available_extensions()
+	private function get_available_extensions()
 	{
 		try {
 			$cache_key = $this->get_cache_key( 'available_extensions' );
@@ -1728,7 +1728,7 @@ final class _FW_Extensions_Manager
 					}
 
 					{
-						$transient_name = 'fw_ext_manager_gh_ext_download';
+						$transient_name = 'fw_ext_manager_gh_download';
 						$transient_ttl  = HOUR_IN_SECONDS;
 
 						$cache = get_site_transient($transient_name);
@@ -1743,7 +1743,10 @@ final class _FW_Extensions_Manager
 					} else {
 						$http = new WP_Http();
 
-						$response = $http->get('https://api.github.com/repos/'. $source_data['user_repo'] .'/releases');
+						$response = $http->get(
+							apply_filters('fw_github_api_url', 'https://api.github.com')
+							. '/repos/'. $source_data['user_repo'] .'/releases'
+						);
 
 						unset($http);
 
@@ -1798,14 +1801,14 @@ final class _FW_Extensions_Manager
 
 						{
 							$cache[ $source_data['user_repo'] ] = array(
-								'zipball_url' => $release['zipball_url'],
+								'zipball_url' => 'https://github.com/'. $source_data['user_repo'] .'/archive/'. $release['tag_name'] .'.zip',
 								'tag_name' => $release['tag_name']
 							);
 
 							set_site_transient($transient_name, $cache, $transient_ttl);
 						}
 
-						$download_link = $release['zipball_url'];
+						$download_link = $cache[ $source_data['user_repo'] ]['zipball_url'];
 
 						unset($release);
 					}
@@ -2482,5 +2485,15 @@ final class _FW_Extensions_Manager
 		}
 
 		$this->collect_extensions_that_requires($collected, $found_extensions, $check_all);
+	}
+
+	/**
+	 * Get extension settings page link
+	 * @param string $extension_name
+	 * @return string
+	 */
+	public function get_extension_link($extension_name)
+	{
+		return $this->get_link() .'&sub-page=extension&extension='. $extension_name;
 	}
 }
