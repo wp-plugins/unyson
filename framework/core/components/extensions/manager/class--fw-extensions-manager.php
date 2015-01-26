@@ -180,7 +180,7 @@ final class _FW_Extensions_Manager
 	 * Extensions available for download
 	 * @return array {name => data}
 	 */
-	public function get_available_extensions()
+	private function get_available_extensions()
 	{
 		try {
 			$cache_key = $this->get_cache_key( 'available_extensions' );
@@ -792,6 +792,22 @@ final class _FW_Extensions_Manager
 					fw_get_framework_directory('/extensions'), fw_current_url(), array($nonce['name'])
 				)) {
 					break;
+				}
+
+				// increase timeout
+				if (
+					function_exists('set_time_limit')
+					&&
+					function_exists('ini_get')
+					&&
+					($timeout = intval(ini_get('max_execution_time')))
+				) {
+					$extensions_count = 0;
+					foreach ($install_data['parents'] as $extension_name => $parent_extensions) {
+						$extensions_count += count($parent_extensions);
+					}
+
+					set_time_limit($timeout + $extensions_count * 10);
 				}
 
 				$available_extensions = $this->get_available_extensions();
@@ -1408,26 +1424,37 @@ final class _FW_Extensions_Manager
 
 		// search required extensions
 		{
+			$pending_required_search = $activated_extensions;
 			$not_found_required = array();
 
-			foreach ( array_keys( $activated_extensions ) as $extension_name ) {
-				unset( $required_extensions ); // reset reference
-				$required_extensions = array();
-				$this->collect_required_extensions( $extension_name, $installed_extensions, $required_extensions );
+			while ($pending_required_search) {
+				foreach (array_keys($pending_required_search) as $extension_name) {
+					unset($pending_required_search[$extension_name]);
 
-				foreach ( $required_extensions as $required_extension_name => $required_extension_data ) {
-					if (!isset($installed_extensions[$required_extension_name])) {
-						$not_found_required[$required_extension_name] = array();
-						continue;
-					}
+					unset($required_extensions); // reset reference
+					$required_extensions = array();
+					$this->collect_required_extensions($extension_name, $installed_extensions, $required_extensions);
 
-					$db_active_extensions[ $required_extension_name ] = array();
-					$activated_extensions[ $required_extension_name ] = array();
+					foreach ($required_extensions as $required_extension_name => $required_extension_data) {
+						if (!isset($installed_extensions[$required_extension_name])) {
+							$not_found_required[$required_extension_name] = array();
+							continue;
+						}
 
-					// search sub-extensions
-					foreach ($this->collect_sub_extensions($required_extension_name, $installed_extensions) as $sub_extension_name => $sub_extension_data) {
-						$db_active_extensions[ $sub_extension_name ] = array();
-						$activated_extensions[ $sub_extension_name ] = array();
+						$db_active_extensions[$required_extension_name] = array();
+						$activated_extensions[$required_extension_name] = array();
+
+						// search sub-extensions
+						foreach ($this->collect_sub_extensions($required_extension_name, $installed_extensions) as $sub_extension_name => $sub_extension_data) {
+							if (isset($activated_extensions[$sub_extension_name])) {
+								continue;
+							}
+
+							$db_active_extensions[$sub_extension_name] = array();
+							$activated_extensions[$sub_extension_name] = array();
+
+							$pending_required_search[$sub_extension_name] = array();
+						}
 					}
 				}
 			}
@@ -1728,7 +1755,7 @@ final class _FW_Extensions_Manager
 					}
 
 					{
-						$transient_name = 'fw_ext_manager_gh_ext_download';
+						$transient_name = 'fw_ext_manager_gh_download';
 						$transient_ttl  = HOUR_IN_SECONDS;
 
 						$cache = get_site_transient($transient_name);
@@ -1743,7 +1770,10 @@ final class _FW_Extensions_Manager
 					} else {
 						$http = new WP_Http();
 
-						$response = $http->get('https://api.github.com/repos/'. $source_data['user_repo'] .'/releases');
+						$response = $http->get(
+							apply_filters('fw_github_api_url', 'https://api.github.com')
+							. '/repos/'. $source_data['user_repo'] .'/releases'
+						);
 
 						unset($http);
 
@@ -1798,14 +1828,14 @@ final class _FW_Extensions_Manager
 
 						{
 							$cache[ $source_data['user_repo'] ] = array(
-								'zipball_url' => $release['zipball_url'],
+								'zipball_url' => 'https://github.com/'. $source_data['user_repo'] .'/archive/'. $release['tag_name'] .'.zip',
 								'tag_name' => $release['tag_name']
 							);
 
 							set_site_transient($transient_name, $cache, $transient_ttl);
 						}
 
-						$download_link = $release['zipball_url'];
+						$download_link = $cache[ $source_data['user_repo'] ]['zipball_url'];
 
 						unset($release);
 					}
@@ -1825,6 +1855,14 @@ final class _FW_Extensions_Manager
 									$wp_error_id,
 									sprintf( __( 'Cannot download the "%s" extension zip. (Response code: %d)', 'fw' ),
 										$this->get_extension_title( $extension_name ), $response_code
+									)
+								);
+							} elseif (is_wp_error($response)) {
+								return new WP_Error(
+									$wp_error_id,
+									sprintf( __( 'Cannot download the "%s" extension zip. %s', 'fw' ),
+										$this->get_extension_title( $extension_name ),
+										$response->get_error_message()
 									)
 								);
 							} else {
@@ -2482,5 +2520,15 @@ final class _FW_Extensions_Manager
 		}
 
 		$this->collect_extensions_that_requires($collected, $found_extensions, $check_all);
+	}
+
+	/**
+	 * Get extension settings page link
+	 * @param string $extension_name
+	 * @return string
+	 */
+	public function get_extension_link($extension_name)
+	{
+		return $this->get_link() .'&sub-page=extension&extension='. $extension_name;
 	}
 }
