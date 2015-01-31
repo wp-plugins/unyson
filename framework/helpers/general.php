@@ -622,7 +622,7 @@ function fw_extract_only_options(array $options, &$_recursion_options = array())
 }
 
 /**
- * Collect correct options from first level on the array and group them
+ * Collect correct options from the first level of the array and group them
  * @param array $collected Will be filled with found correct options
  * @param array $options
  */
@@ -659,8 +659,41 @@ function fw_collect_first_level_options(&$collected, &$options) {
 				default:
 					trigger_error('Invalid option container type: '. $option['type'], E_USER_WARNING);
 			}
-		} elseif (is_int($option_id) && is_array($option)) {
-			// array with options
+		} elseif (
+			is_int($option_id)
+			&&
+			is_array($option)
+			&&
+			/**
+			 * make sure the array key was generated automatically
+			 * and it's not an associative array with numeric keys created like this: $options[1] = array();
+			 */
+			isset($options[0])
+		) {
+			/**
+			 * Array "without key" containing options.
+			 *
+			 * This happens when options are returned into array from a function:
+			 * $options = array(
+			 *  'foo' => array('type' => 'text'),
+			 *  'bar' => array('type' => 'textarea'),
+			 *
+			 *  // this is our case
+			 *  // go inside this array and extract the options as they are on the same array level
+			 *  array(
+			 *      'hello' => array('type' => 'text'),
+			 *  ),
+			 *
+			 *  // there can be any nested arrays
+			 *  array(
+			 *      array(
+			 *          array(
+			 *              'h1' => array('type' => 'text'),
+			 *          ),
+			 *      ),
+			 *  ),
+			 * )
+			 */
 			fw_collect_first_level_options($collected, $option);
 		} elseif (isset($option['type'])) {
 			// simple option, last possible level in options array
@@ -1042,4 +1075,74 @@ function fw_ext($extension_name) {
  */
 function fw_get_url_without_scheme( $url ) {
 	return preg_replace( '/^[^:]+:\/\//', '//', $url );
+}
+
+/**
+ * Try to find file path by its uri and read the file contents
+ * @param string $file_uri
+ * @return bool|string false or string - the file contents
+ */
+function fw_read_file_by_uri($file_uri) {
+	static $base = null;
+
+	if ($base === null) {
+		$base = array();
+		$base['dir'] = WP_CONTENT_DIR;
+		$base['uri'] = ltrim(content_url(), '/');
+		$base['uri_prefix_regex'] = '/^'. preg_quote($base['uri'], '/') .'/';
+	}
+
+	$file_rel_path = preg_replace($base['uri_prefix_regex'], '', $file_uri);
+
+	if ($base['uri'] === $file_rel_path) {
+		// the file is not inside base dir
+		return false;
+	}
+
+	$file_path = $base['dir'] .'/'. $file_rel_path;
+
+	if (!file_exists($file_path)) {
+		return false;
+	}
+
+	return file_get_contents($file_path);
+}
+
+/**
+ * Make stylesheet contents (portable) independent of directory location
+ * For e.g. replace relative paths 'url(img/bg.png)' with full paths 'url(http://site.com/assets/img/bg.png)'
+ *
+ * @param string $href 'http://.../style.css'
+ * @param null|string $contents If not specified, will try to read from $href
+ * @return bool|string false - on failure; string - stylesheet contents
+ */
+function fw_make_stylesheet_portable($href, $contents = null) {
+	if (is_null($contents)) {
+		$contents = fw_read_file_by_uri($href);
+
+		if ($contents === false) {
+			return false;
+		}
+	}
+
+	$dir_uri = dirname($href);
+
+	/**
+	 * Replace relative 'url(img/bg.png)'
+	 * with full 'url(http://site.com/assets/img/bg.png)'
+	 *
+	 * Do not touch if url starts with:
+	 * - 'https://'
+	 * - 'http://'
+	 * - '/' (also matches '//')
+	 * - '#' (for css property: "behavior: url(#behaveBinObject)")
+	 * - 'data:'
+	 */
+	$contents = preg_replace(
+		'/url\s*\((?!\s*[\'"]?(?:\/|data\:|\#|(?:https?:)?\/\/))\s*([\'"])?/',
+		'url($1'. $dir_uri .'/',
+		$contents
+	);
+
+	return $contents;
 }
