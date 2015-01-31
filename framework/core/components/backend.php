@@ -565,16 +565,87 @@ final class _FW_Component_Backend
 
 		fw_set_db_post_option($post_id, null, $options_values);
 
+		do_action('fw_save_post_options', $post_id, $post, $old_values);
+	}
+
+	/**
+	 * Update all post meta `fw_option:<option-id>` with values from post options that has the 'save-in-separate-meta' parameter
+	 * @param int $post_id
+	 * @return bool
+	 */
+	public function _sync_post_separate_meta($post_id)
+	{
+		$post_type = get_post_type($post_id);
+
+		if (!$post_type) {
+			return false;
+		}
+
+		$meta_prefix = 'fw_option:';
+
 		/**
-		 * find options that requested to be saved in separate meta
+		 * Collect all options that needs to be saved in separate meta
 		 */
-		foreach (fw_extract_only_options(fw()->theme->get_post_options($post->post_type)) as $option_id => $option) {
-			if (isset($option['save-in-separate-meta']) && $option['save-in-separate-meta']) {
-				fw_update_post_meta($post_id, 'fw_option:'. $option_id, $options_values[$option_id]);
+		{
+			$options_values = fw_get_db_post_option($post_id);
+
+			$separate_meta_options = array();
+
+			foreach (
+				fw_extract_only_options(fw()->theme->get_post_options($post_type))
+				as $option_id => $option
+			) {
+				if (
+					isset($option['save-in-separate-meta'])
+					&&
+					$option['save-in-separate-meta']
+					&&
+					array_key_exists($option_id, $options_values)
+				) {
+					$separate_meta_options[ $meta_prefix . $option_id ] = $options_values[$option_id];
+				}
+			}
+
+			unset($options_values);
+		}
+
+		/**
+		 * Delete meta that starts with $meta_prefix
+		 */
+		{
+			/** @var wpdb $wpdb */
+			global $wpdb;
+
+			foreach(
+				$wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT meta_key " .
+						"FROM {$wpdb->postmeta} " .
+						"WHERE meta_key LIKE %s AND post_id = %d",
+						$wpdb->esc_like($meta_prefix) .'%',
+						$post_id
+					)
+				)
+				as $row
+			) {
+				if (array_key_exists($row->meta_key, $separate_meta_options)) {
+					/**
+					 * This meta exists and will be updated below.
+					 * Do not delete for performance reasons, instead of delete->insert will be performed only update
+					 */
+					continue;
+				} else {
+					// this option does not exist anymore
+					delete_post_meta($post_id, $row->meta_key);
+				}
 			}
 		}
 
-		do_action('fw_save_post_options', $post_id, $post, $old_values);
+		foreach ($separate_meta_options as $meta_key => $option_value) {
+			update_post_meta($post_id, $meta_key, $option_value);
+		}
+
+		return true;
 	}
 
 	public function _action_term_edit($term_id, $tt_id, $taxonomy)
@@ -742,11 +813,20 @@ final class _FW_Component_Backend
 			return $data;
 		}
 
-		$values = FW_Request::POST(FW_Option_Type::get_default_name_prefix(), fw_get_db_settings_option());
+		if ($values = FW_Request::POST(FW_Option_Type::get_default_name_prefix())) {
+			// This is form submit, extract correct values from $_POST values
+			$values = fw_get_options_values_from_input($options, $values);
+		} else {
+			// Extract previously saved correct values
+			$values = fw_get_db_settings_option();
+		}
 
 		echo fw()->backend->render_options($options, $values);
 
-		$data['submit']['html'] = '<button class="button-primary button-large">'. __('Save', 'fw') .'</button>';
+		$data['submit']['html'] =
+			'<input type="submit" name="_fw_save_options" value="'. esc_attr__('Save', 'fw') .'" class="button-primary button-large" />' .
+			' &nbsp;&nbsp; ' .
+			'<input type="submit" name="_fw_reset_options" value="'. esc_attr__('Reset', 'fw') .'" class="button-secondary button-large" />';
 
 		{
 			$focus_tab_input_name = '_focus_tab';
@@ -803,19 +883,30 @@ final class _FW_Component_Backend
 
 	public function _settings_form_save($data)
 	{
+		$flash_id = 'fw_settings_form_save';
 		$old_values = (array)fw_get_db_settings_option();
 
-		fw_set_db_settings_option(
-			null,
-			array_merge(
-				$old_values,
-				fw_get_options_values_from_input(
-					fw()->theme->get_settings_options()
-				)
-			)
-		);
+		if (!empty($_POST['_fw_reset_options'])) { // The "Reset" button was pressed
+			fw_set_db_settings_option(null, array());
 
-		FW_Flash_Messages::add('fw_settings_form_saved', __('Options successfully saved', 'fw'), 'success');
+			FW_Flash_Messages::add($flash_id, __('The options were successfully reset', 'fw'), 'info');
+
+			do_action('fw_settings_form_reset', $old_values);
+		} else { // The "Save" button was pressed
+			fw_set_db_settings_option(
+				null,
+				array_merge(
+					$old_values,
+					fw_get_options_values_from_input(
+						fw()->theme->get_settings_options()
+					)
+				)
+			);
+
+			FW_Flash_Messages::add($flash_id, __('The options were successfully saved', 'fw'), 'success');
+
+			do_action('fw_settings_form_saved', $old_values);
+		}
 
 		$redirect_url = fw_current_url();
 
@@ -832,8 +923,6 @@ final class _FW_Component_Backend
 
 		$data['redirect'] = $redirect_url;
 
-		do_action('fw_settings_form_saved', $old_values);
-
 		return $data;
 	}
 
@@ -841,8 +930,8 @@ final class _FW_Component_Backend
 	 * Render options array and return the generated HTML
 	 *
 	 * @param array $options
-	 * @param array $values
-	 * @param array $options_data
+	 * @param array $values Correct values returned by fw_get_options_values_from_input()
+	 * @param array $options_data {id_prefix => ..., name_prefix => ...}
 	 * @param string $design
 	 *
 	 * @return string HTML
