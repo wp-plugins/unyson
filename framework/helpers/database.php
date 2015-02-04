@@ -21,7 +21,7 @@
 
 		if ( is_null( $value ) ) {
 			/**
-			 * Maybe the options was never saved or the given option id does not exists
+			 * Maybe the options was never saved or the given option id does not exist
 			 * Extract the default values from the options array and try to find there the option id
 			 */
 
@@ -115,6 +115,8 @@
 		$option_id = 'fw_options' . ( $option_id !== null ? '/' . $option_id : '' );
 
 		FW_WP_Meta::set( 'post', $post_id, $option_id, $value );
+
+		fw()->backend->_sync_post_separate_meta($post_id);
 	}
 }
 
