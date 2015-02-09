@@ -245,6 +245,10 @@ final class _FW_Component_Backend
 			wp_localize_script('fw', '_fw_localized', array(
 				'FW_URI'   => fw_get_framework_directory_uri(),
 				'SITE_URI' => site_url(),
+				'l10n' => array(
+					'done' => __('Done', 'fw'),
+					'ah_sorry' => __('Ah, Sorry', 'fw'),
+				),
 			));
 		}
 
@@ -871,7 +875,7 @@ final class _FW_Component_Backend
 		if (!empty($_POST['_fw_reset_options'])) { // The "Reset" button was pressed
 			fw_set_db_settings_option(null, array());
 
-			FW_Flash_Messages::add($flash_id, __('The options were successfully reset', 'fw'), 'info');
+			FW_Flash_Messages::add($flash_id, __('The options were successfully reset', 'fw'), 'success');
 
 			do_action('fw_settings_form_reset', $old_values);
 		} else { // The "Save" button was pressed
