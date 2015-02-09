@@ -41,6 +41,15 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 	{
 	}
 
+	/**
+	 * @param string $append '/foo/bar'
+	 * @return string
+	 */
+	private function get_github_api_url($append)
+	{
+		return apply_filters('fw_github_api_url', 'https://api.github.com') . $append;
+	}
+
 	private function fetch_latest_version($user_slash_repo)
 	{
 		/**
@@ -58,7 +67,9 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 
 		$http = new WP_Http();
 
-		$response = $http->get('https://api.github.com/repos/'. $user_slash_repo .'/releases');
+		$response = $http->get(
+			$this->get_github_api_url('/repos/'. $user_slash_repo .'/releases')
+		);
 
 		unset($http);
 
@@ -203,7 +214,9 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 	{
 		$http = new WP_Http();
 
-		$response = $http->get('https://api.github.com/repos/'. $user_slash_repo .'/releases');
+		$response = $http->get(
+			$this->get_github_api_url('/repos/'. $user_slash_repo .'/releases')
+		);
 
 		unset($http);
 
@@ -274,9 +287,12 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 
 		$http = new WP_Http();
 
-		$response = $http->request($release['zipball_url'], array(
-			'timeout' => $this->download_timeout,
-		));
+		$response = $http->request(
+			'https://github.com/'. $user_slash_repo .'/archive/'. $release['tag_name'] .'.zip',
+			array(
+				'timeout' => $this->download_timeout,
+			)
+		);
 
 		unset($http);
 
