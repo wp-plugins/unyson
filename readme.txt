@@ -90,7 +90,7 @@ Yes; Unyson will work with any theme.
 * Improved modal sizes *(Set max-width,max-height pixels instead of top,right,bottom,left percents)*
 * Added side tabs styles for Theme Settings page.
 
-    To enable, add in `{theme}/framework-customizations/theme/config.php`:
+    To enable, add in `{theme}/framework-customizations/theme/config.php`
 
     ```
     $cfg['settings_form_side_tabs'] = true;
@@ -102,7 +102,7 @@ Yes; Unyson will work with any theme.
 * Minor fixes
 * Theme Settings form ajax submit [#198](https://github.com/ThemeFuse/Unyson/issues/198)
 
-    To disable, add in `{theme}/framework-customizations/theme/config.php`:
+    To disable, add in `{theme}/framework-customizations/theme/config.php`
 
     ```
     $cfg['settings_form_ajax_submit'] = false;
