@@ -4,10 +4,81 @@
  * @var array $values
  * @var string $focus_tab_input_name
  * @var string $reset_input_name
+ * @var bool $ajax_submit
+ * @var bool $side_tabs
  */
 ?>
 
+<?php if ($side_tabs): ?>
+	<div class="fw-settings-form-header fw-row" style="opacity:0;">
+		<div class="fw-col-xs-12 fw-col-sm-6">
+			<h2><?php echo fw()->theme->manifest->get_name() ?>
+				<?php if (fw()->theme->manifest->get('author')): ?>
+					<?php
+					if (fw()->theme->manifest->get('author_uri')) {
+						echo fw_html_tag('a', array(
+							'href' => fw()->theme->manifest->get('author_uri'),
+							'target' => '_blank'
+						), '<small>'. __('by', 'fw') .' '. fw()->theme->manifest->get('author') .'</small>');
+					} else {
+						echo '<small>'. fw()->theme->manifest->get('author') .'</small>';
+					}
+					?>
+				<?php endif; ?>
+			</h2>
+		</div>
+		<div class="fw-col-xs-12 fw-col-sm-6">
+			<div class="form-header-buttons">
+				<?php
+				echo fw_html_tag('input', array(
+					'type' => 'submit',
+					'name' => '_fw_reset_options',
+					'value' => __('Reset Options', 'fw'),
+					'class' => 'button-secondary button-large submit-button-reset',
+				))
+				?>
+				<i class="submit-button-separator"></i>
+				<?php
+				echo fw_html_tag('input', array(
+					'type' => 'submit',
+					'name' => '_fw_save_options',
+					'value' => __('Save Changes', 'fw'),
+					'class' => 'button-primary button-large submit-button-save',
+				))
+				?>
+			</div>
+		</div>
+	</div>
+	<script type="text/javascript">
+		jQuery(function($){
+			fwEvents.on("fw:options:init", function(data){
+				// styles are loaded in footer and are applied after page load
+				data.$elements.find('.fw-settings-form-header').fadeTo('fast', 1, function(){ $(this).css('opacity', ''); });
+			}, 300);
+		});
+	</script>
+<?php endif; ?>
+
 <?php echo fw()->backend->render_options($options, $values); ?>
+
+<div class="form-footer-buttons">
+<!-- This div is required to follow after options in order to have special styles in case options will contain tabs (css adjacent selector + ) -->
+<?php
+	echo fw_html_tag('input', array(
+		'type' => 'submit',
+		'name' => '_fw_save_options',
+		'value' => __('Save Changes', 'fw'),
+		'class' => 'button-primary button-large',
+	));
+	echo ($side_tabs ? '' : ' &nbsp;&nbsp; ');
+	echo fw_html_tag('input', array(
+		'type' => 'submit',
+		'name' => '_fw_reset_options',
+		'value' => __('Reset Options', 'fw'),
+		'class' => 'button-secondary button-large',
+	));
+?>
+</div>
 
 <!-- focus tab -->
 <?php
@@ -48,7 +119,7 @@ jQuery(function($){
 			 * so use alternative solution http://stackoverflow.com/a/5721762
 			 */
 			{
-				$(this).closest('form').find('input[type="submit"]').removeAttr('clicked');
+				$(this).closest('form').find('input[type="submit"][clicked]').removeAttr('clicked');
 				$(this).attr('clicked', '');
 			}
 
@@ -66,7 +137,7 @@ jQuery(function($){
 <!-- ajax submit -->
 <script type="text/javascript">
 	jQuery(function ($) {
-		<?php if (!fw()->theme->get_config('settings_form_ajax_submit', true)): ?>
+		<?php if (!$ajax_submit): ?>
 		return; // ajax submit is disabled in theme config
 		<?php endif; ?>
 
@@ -195,7 +266,6 @@ jQuery(function($){
 										'display': '',
 										'height': ''
 									});
-									elements.$form.find('.fw-options-tabs-wrapper').css('opacity', '');
 								}
 
 								fwEvents.trigger('fw:options:init', {$elements: elements.$form});

@@ -226,6 +226,11 @@ final class _FW_Component_Backend
 			);
 		}
 
+		/**
+		 * Important!
+		 * Call wp_enqueue_media() before wp_enqueue_script('fw') (or using 'fw' in your script dependencies)
+		 * otherwise fw.OptionsModal won't work
+		 */
 		{
 			wp_register_style(
 				'fw',
@@ -263,7 +268,7 @@ final class _FW_Component_Backend
 			wp_register_script(
 				'fw-backend-options',
 				fw_get_framework_directory_uri('/static/js/backend-options.js'),
-				array('fw-events', 'postbox', 'jquery-ui-tabs', 'fw'),
+				array('fw', 'fw-events', 'postbox', 'jquery-ui-tabs'),
 				fw()->manifest->get_version(),
 				true
 			);
@@ -464,7 +469,12 @@ final class _FW_Component_Backend
 	{
 		echo '<div class="wrap">';
 
-		echo '<h2>'. __('Theme Settings', 'fw') .'</h2><br/>';
+		if (fw()->theme->get_config('settings_form_side_tabs')) {
+			// this is needed for flash messages (admin notices) to be displayed properly
+			echo '<h2 class="fw-hidden"></h2>';
+		} else {
+			echo '<h2>' . __('Theme Settings', 'fw') . '</h2><br/>';
+		}
 
 		$this->settings_form->render();
 
@@ -817,6 +827,12 @@ final class _FW_Component_Backend
 
 	public function _settings_form_render($data)
 	{
+		{
+			$this->enqueue_options_static(array());
+
+			wp_enqueue_script('fw-form-helpers');
+		}
+
 		$options = fw()->theme->get_settings_options();
 
 		if (empty($options)) {
@@ -831,29 +847,26 @@ final class _FW_Component_Backend
 			$values = fw_get_db_settings_option();
 		}
 
-		wp_enqueue_script('fw-form-helpers');
+		$side_tabs = fw()->theme->get_config('settings_form_side_tabs');
+
+		$data['attr']['class'] = 'fw-settings-form';
+
+		if ($side_tabs) {
+			$data['attr']['class'] .= ' fw-backend-side-tabs';
+		}
+
+		$data['submit']['html'] = '<!-- -->'; // is generated in view
 
 		fw_render_view(fw_get_framework_directory('/views/backend-settings-form.php'), array(
 			'options' => $options,
-			'values'  => $values,
+			'values' => $values,
 			'focus_tab_input_name' => '_focus_tab',
-			'reset_input_name' => '_fw_reset_options'
+			'reset_input_name' => '_fw_reset_options',
+			'ajax_submit' => fw()->theme->get_config('settings_form_ajax_submit'),
+			'side_tabs' => $side_tabs,
 		), false);
 
-		$data['submit']['html'] =
-			fw_html_tag('input', array(
-				'type' => 'submit',
-				'name' => '_fw_save_options',
-				'value' => __('Save', 'fw'),
-				'class' => 'button-primary button-large',
-			)) .
-			' &nbsp;&nbsp; ' .
-			fw_html_tag('input', array(
-				'type' => 'submit',
-				'name' => '_fw_reset_options',
-				'value' => __('Reset', 'fw'),
-				'class' => 'button-secondary button-large',
-			));
+
 
 		return $data;
 	}
@@ -932,6 +945,7 @@ final class _FW_Component_Backend
 			 */
 			$this->register_static();
 
+			wp_enqueue_media();
 			wp_enqueue_style('fw-backend-options');
 			wp_enqueue_script('fw-backend-options');
 		}
@@ -952,7 +966,7 @@ final class _FW_Component_Backend
 		unset($collected['tabs']);
 
 		if (!empty($collected['boxes'])) {
-			echo '<div class="fw-postboxes metabox-holder">';
+			echo '<div class="fw-backend-postboxes metabox-holder">';
 
 			foreach ($collected['boxes'] as $id => &$box) {
 				// prepare attributes
@@ -1032,6 +1046,7 @@ final class _FW_Component_Backend
 			 */
 			$this->register_static();
 
+			wp_enqueue_media();
 			wp_enqueue_style('fw-backend-options');
 			wp_enqueue_script('fw-backend-options');
 		}
