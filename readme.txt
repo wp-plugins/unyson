@@ -92,7 +92,7 @@ Yes; Unyson will work with any theme.
 
     To enable, add in `{theme}/framework-customizations/theme/config.php`:
 
-    ```php
+    ```
     $cfg['settings_form_side_tabs'] = true;
     ```
 
@@ -104,7 +104,7 @@ Yes; Unyson will work with any theme.
 
     To disable, add in `{theme}/framework-customizations/theme/config.php`:
 
-    ```php
+    ```
     $cfg['settings_form_ajax_submit'] = false;
     ```
 
