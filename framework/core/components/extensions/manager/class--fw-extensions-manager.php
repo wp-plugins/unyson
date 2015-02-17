@@ -545,21 +545,41 @@ final class _FW_Extensions_Manager
 		);
 
 		/**
+		 * Collect $hookname that contains $data['slug'] before the action
+		 * and skip them in verification after action
+		 */
+		{
+			global $_registered_pages;
+
+			$found_hooknames = array();
+
+			if (!empty($_registered_pages)) {
+				foreach ( $_registered_pages as $hookname => $b ) {
+					if ( strpos( $hookname, $data['slug'] ) !== false ) {
+						$found_hooknames[$hookname] = true;
+					}
+				}
+			}
+		}
+
+		/**
 		 * Use this action if you what to add the extensions page in a custom place in menu
 		 * Usage example http://pastebin.com/2iWVRPAU
 		 */
 		do_action('fw_backend_add_custom_extensions_menu', $data);
 
 		/**
-		 * check if menu was added in the action above
+		 * Check if menu was added in the action above
 		 */
 		{
-			global $_registered_pages;
-
 			$menu_exists = false;
 
 			if (!empty($_registered_pages)) {
 				foreach ( $_registered_pages as $hookname => $b ) {
+					if (isset($found_hooknames[$hookname])) {
+						continue;
+					}
+
 					if ( strpos( $hookname, $data['slug'] ) !== false ) {
 						$menu_exists = true;
 						break;
@@ -569,7 +589,7 @@ final class _FW_Extensions_Manager
 		}
 
 		if ($menu_exists) {
-			//
+			// do nothing
 		} else {
 			add_menu_page(
 				$data['title'],
@@ -2498,7 +2518,13 @@ final class _FW_Extensions_Manager
 
 		if (!isset($installed_extensions[$extension_name])) {
 			return new WP_Error($wp_error_id,
-				sprintf(__('Cannot activate the %s extension because it is not installed.', 'fw'), fw_id_to_title($extension_name))
+				sprintf(
+					__('Cannot activate the %s extension because it is not installed. %s', 'fw'),
+					fw_id_to_title($extension_name),
+					fw_html_tag('a', array(
+						'href' => $this->get_link() .'&sub-page=install&extension='. $extension_name
+					),  __('Install', 'fw'))
+				)
 			);
 		}
 
@@ -2539,7 +2565,13 @@ final class _FW_Extensions_Manager
 					foreach ($required_extensions as $required_extension_name => $required_extension_data) {
 						if (!isset($installed_extensions[$required_extension_name])) {
 							return new WP_Error($wp_error_id,
-								sprintf(__('Cannot activate the %s extension because it is not installed.', 'fw'), fw_id_to_title($required_extension_name))
+								sprintf(
+									__('Cannot activate the %s extension because it is not installed. %s', 'fw'),
+									fw_id_to_title($required_extension_name),
+									fw_html_tag('a', array(
+										'href' => $this->get_link() .'&sub-page=install&extension='. $required_extension_name
+									),  __('Install', 'fw'))
+								)
 							);
 						}
 
