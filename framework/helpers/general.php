@@ -755,12 +755,8 @@ function fw_prepare_option_value($value) {
 		return $value;
 	}
 
-	if (function_exists('qtrans_use_current_language_if_not_found_use_default_language')) {
-		if (is_array($value)) {
-			array_walk_recursive($value, 'qtrans_use_current_language_if_not_found_use_default_language');
-		} else {
-			$value = qtrans_use_current_language_if_not_found_use_default_language($value);
-		}
+	if (function_exists('qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage')) {
+		$value = qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage($value);
 	}
 
 	return $value;
