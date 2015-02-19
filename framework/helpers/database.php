@@ -19,9 +19,13 @@
 			$option_id, $default_value, $get_original_value
 		);
 
-		if ( is_null( $value ) ) {
+		if (
+			(!is_null($option_id) && is_null($value)) // a specific option_id was requested
+			||
+			(is_null($option_id) && empty($value)) // all options were requested but the db value is empty (this can happen after Reset)
+		) {
 			/**
-			 * Maybe the options was never saved or the given option id does not exists
+			 * Maybe the options was never saved or the given option id does not exist
 			 * Extract the default values from the options array and try to find there the option id
 			 */
 
@@ -115,6 +119,8 @@
 		$option_id = 'fw_options' . ( $option_id !== null ? '/' . $option_id : '' );
 
 		FW_WP_Meta::set( 'post', $post_id, $option_id, $value );
+
+		fw()->backend->_sync_post_separate_meta($post_id);
 	}
 }
 

@@ -1,9 +1,9 @@
 === Unyson ===
 Contributors: unyson, themefusecom
-Tags: page builder, cms, grid, layout, responsive, back up, backup, db backup, dump, migrate, schedule, search engine optimization, seo, media, slideshow, shortcode, slide, slideshare, slideshow, google sitemaps, sitemaps, analytics, google analytics, calendar, event, events, google maps, learning, lessons, sidebars, breadcrumbs, review, portfolio
+Tags: page builder, cms, grid, layout, responsive, back up, backup, db backup, dump, migrate, schedule, search engine optimization, seo, media, slideshow, shortcode, slide, slideshare, slideshow, google sitemaps, sitemaps, analytics, google analytics, calendar, event, events, google maps, learning, lessons, sidebars, breadcrumbs, review, portfolio, framework
 Requires at least: 4.0.0
 Tested up to: 4.1
-Stable tag: 2.1.12
+Stable tag: 2.1.25
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -36,6 +36,8 @@ Developers can contribute to the source code on the [Unyson GitHub Repository](h
 
 Translators can contribute new languages to Unyson through [Transifex](https://www.transifex.com/projects/p/unyson/).
 
+Theme developers can test the compatibility of their themes with new extensions updates before they are going to be released on [Unyson Extensions Approval](https://github.com/ThemeFuse/Unyson-Extensions-Approval).
+
 
 == Installation ==
 
@@ -56,7 +58,7 @@ Translators can contribute new languages to Unyson through [Transifex](https://w
 
 = Where can I find Unyson documentation? =
 
-For extending or theming Unyson, see [developers documetation](http://unyson-docs.themefuse.com/en/latest/).
+For extending or theming Unyson, see [developers documetation](http://manual.unyson.io/).
 
 = Where can I report bugs or contribute to the project? =
 
@@ -83,6 +85,81 @@ Yes; Unyson will work with any theme.
 
 
 == Changelog ==
+
+= 2.1.25 =
+* Fixed qTranslate function name
+* Improved default flash messages display position in frontend
+* Option-type icon: Minor css changes
+* Minor fix on extensions install: The success state was set too early
+
+= 2.1.24 =
+* Fixed access denied on Theme Settings and Unyson pages when qTranslate is active
+* Made all boxes open when Theme Settings Side Tabs is active (with default tabs only first box is open)
+* Minor fixes
+
+= 2.1.23 =
+* Improved modal sizes *(Set max-width,max-height pixels instead of top,right,bottom,left percents)*
+* Added side tabs styles for Theme Settings page.
+
+    To enable, add in `{theme}/framework-customizations/theme/config.php`
+
+    ```
+    $cfg['settings_form_side_tabs'] = true;
+    ```
+
+= 2.1.22 =
+* Added javascript helper `fw.soleModal()`
+* Added `framework/static/js/fw-form-helpers.js`
+* Minor fixes
+* Theme Settings form ajax submit [#198](https://github.com/ThemeFuse/Unyson/issues/198)
+
+    To disable, add in `{theme}/framework-customizations/theme/config.php`
+
+    ```
+    $cfg['settings_form_ajax_submit'] = false;
+    ```
+
+= 2.1.21 =
+* Made the `forms` and `mailer` extensions hidden.
+
+= 2.1.20 =
+* Added warning on Theme Settings reset [^](http://static.md/0fcf01628eddab75fdbedb3a24784db3.png)
+* `FW_Form`: Form attributes can be changed in the render method
+* Option type `slider` and `range-slider` fixes [#210](https://github.com/ThemeFuse/Unyson/issues/210)
+* Option type `typography`: Added filter on standard fonts [#212](https://github.com/ThemeFuse/Unyson/issues/212)
+* Option type `radio` and `checkboxes`: Added `inline` parameter [#216](https://github.com/ThemeFuse/Unyson/issues/216)
+* Minor fixes
+
+= 2.1.19 =
+* Option type `icon`: Updated Font Awesome to 4.3.0
+* Option type `typography` fixes [#195](https://github.com/ThemeFuse/Unyson/issues/195)
+* Improved hidden standalone extensions auto activation [#203](https://github.com/ThemeFuse/Unyson/issues/203)
+* Fixed nested array detection in options array [#204](https://github.com/ThemeFuse/Unyson/issues/204)
+* Do not save the options when the "Reset" button was pressed on the Theme Settings page [#197](https://github.com/ThemeFuse/Unyson/issues/197)
+
+= 2.1.18 =
+* Added the `FW_WP_List_Table` class
+* Option type `multi-picker`: added support for `short-select`
+* Option type `slider` and `range-slider` design fixes
+* Extension activation fix: Some required extensions were not added for activation
+* Fixed wrong `$data['value']` in `FW_Option_Type::_render()` when form validation fails [#188](https://github.com/ThemeFuse/Unyson/issues/188)
+* Increase timeout on extensions install [#183](https://github.com/ThemeFuse/Unyson/issues/183)
+
+= 2.1.17 =
+* Added the possibility to create a link to an extension settings page `fw()->extensions->manager->get_extension_link('{extension-name}')`
+
+= 2.1.16 =
+* Added the "Reset" button on the Theme Settings page
+* Minor fixes
+
+= 2.1.15 =
+* Minor fix for extension download link
+
+= 2.1.14 =
+* Fixed extension download link to not make a request to Github API
+
+= 2.1.13 =
+* Make requests to custom Github API Cache service to prevent `Github API rate limit exceeded` error [#138](https://github.com/ThemeFuse/Unyson/issues/138)
 
 = 2.1.12 =
 * New extensions: Forms (Contact Forms), Mailer, Social
