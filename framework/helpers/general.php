@@ -622,22 +622,22 @@ function fw_extract_only_options(array $options, &$_recursion_options = array())
 }
 
 /**
- * Collect correct options from first level on the array and group them
+ * Collect correct options from the first level of the array and group them
  * @param array $collected Will be filled with found correct options
  * @param array $options
  */
 function fw_collect_first_level_options(&$collected, &$options) {
-	if (empty($options))
+	if (empty($options)) {
 		return;
+	}
 
 	if (empty($collected)) {
-		$collected['tabs']    = array();
-		$collected['boxes']   = array();
-		$collected['groups']  = array();
-
-		$collected['options'] = array();
-
-		$collected['groups_and_options'] = array();
+		$collected['tabs'] =
+		$collected['boxes'] =
+		$collected['groups'] =
+		$collected['options'] =
+		$collected['groups_and_options'] =
+		$collected['all'] = array();
 	}
 
 	foreach ($options as $option_id => &$option) {
@@ -653,20 +653,64 @@ function fw_collect_first_level_options(&$collected, &$options) {
 					break;
 				case 'group':
 					$collected['groups'][$option_id] =& $option;
-
 					$collected['groups_and_options'][$option_id] =& $option;
 					break;
 				default:
 					trigger_error('Invalid option container type: '. $option['type'], E_USER_WARNING);
+					continue 2;
 			}
-		} elseif (is_int($option_id) && is_array($option)) {
-			// array with options
+
+			$collected['all'][ $option['type'] .':~:'. $option_id ] = array(
+				'type'   => $option['type'],
+				'id'     => $option_id,
+				'option' => &$option,
+			);
+		} elseif (
+			is_int($option_id)
+			&&
+			is_array($option)
+			&&
+			/**
+			 * make sure the array key was generated automatically
+			 * and it's not an associative array with numeric keys created like this: $options[1] = array();
+			 */
+			isset($options[0])
+		) {
+			/**
+			 * Array "without key" containing options.
+			 *
+			 * This happens when options are returned into array from a function:
+			 * $options = array(
+			 *  'foo' => array('type' => 'text'),
+			 *  'bar' => array('type' => 'textarea'),
+			 *
+			 *  // this is our case
+			 *  // go inside this array and extract the options as they are on the same array level
+			 *  array(
+			 *      'hello' => array('type' => 'text'),
+			 *  ),
+			 *
+			 *  // there can be any nested arrays
+			 *  array(
+			 *      array(
+			 *          array(
+			 *              'h1' => array('type' => 'text'),
+			 *          ),
+			 *      ),
+			 *  ),
+			 * )
+			 */
 			fw_collect_first_level_options($collected, $option);
 		} elseif (isset($option['type'])) {
 			// simple option, last possible level in options array
 			$collected['options'][$option_id] =& $option;
-
 			$collected['groups_and_options'][$option_id] =& $option;
+
+			$collected['all'][ 'option' .':~:'. $option_id ] = array(
+				'type'   => 'option',
+				'id'     => $option_id,
+				'option' => &$option,
+			);
 		} else {
 			trigger_error('Invalid option: '. $option_id, E_USER_WARNING);
 		}
@@ -692,6 +736,11 @@ function fw_get_options_values_from_input(array $options, $input_array = null) {
 			$option,
 			isset($input_array[$id]) ? $input_array[$id] : null
 		);
+
+		if (is_null($values[$id])) {
+			// do not save null values
+			unset($values[$id]);
+		}
 	}
 
 	return $values;
@@ -722,12 +771,8 @@ function fw_prepare_option_value($value) {
 		return $value;
 	}
 
-	if (function_exists('qtrans_use_current_language_if_not_found_use_default_language')) {
-		if (is_array($value)) {
-			array_walk_recursive($value, 'qtrans_use_current_language_if_not_found_use_default_language');
-		} else {
-			$value = qtrans_use_current_language_if_not_found_use_default_language($value);
-		}
+	if (function_exists('qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage')) {
+		$value = qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage($value);
 	}
 
 	return $value;
@@ -774,25 +819,27 @@ function fw_get_google_fonts() {
  * @return string Current url
  */
 function fw_current_url() {
-	static $cache = null;
-	if ($cache !== null)
-		return $cache;
+	static $url = null;
 
-	$pageURL = 'http';
+	if ($url === null) {
+		$url = 'http://';
 
-	if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on')
-		$pageURL .= 's';
+		if ($_SERVER['SERVER_NAME'] === '_') { // https://github.com/ThemeFuse/Unyson/issues/126
+			$url .= $_SERVER['HTTP_HOST'];
+		} else {
+			$url .= $_SERVER['SERVER_NAME'];
+		}
 
-	$pageURL .= '://';
+		if ($_SERVER['SERVER_PORT'] != '80') {
+			$url .= ':'. $_SERVER['SERVER_PORT'];
+		}
 
-	if ($_SERVER['SERVER_PORT'] != '80')
-		$pageURL .= $_SERVER['SERVER_NAME'].':'.$_SERVER['SERVER_PORT'].$_SERVER['REQUEST_URI'];
-	else
-		$pageURL .= $_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
+		$url .= $_SERVER['REQUEST_URI'];
 
-	$cache = $pageURL;
+		$url = set_url_scheme($url);
+	}
 
-	return $cache;
+	return $url;
 }
 
 function fw_is_valid_domain_name($domain_name) {
@@ -892,7 +939,11 @@ function fw_human_time($seconds)
 }
 
 function fw_strlen($string) {
-	return mb_strlen($string, 'UTF-8');
+	if (function_exists('mb_strlen')) {
+		return mb_strlen($string, 'UTF-8');
+	} else {
+		return strlen($string);
+	}
 }
 
 /**
@@ -1021,7 +1072,11 @@ function fw_secure_rand($length)
  */
 function fw_id_to_title($id) {
 	// mb_ucfirst()
-	$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	if (function_exists('mb_strtoupper') && function_exists('mb_substr') && function_exists('mb_strlen')) {
+		$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	} else {
+		$id = strtoupper(substr($id, 0, 1)) . substr($id, 1, strlen($id));
+	}
 
 	return str_replace(array('_', '-'), ' ', $id);
 }
@@ -1033,4 +1088,81 @@ function fw_id_to_title($id) {
  */
 function fw_ext($extension_name) {
 	return fw()->extensions->get($extension_name);
+}
+
+/*
+ * Return URI without scheme
+ */
+function fw_get_url_without_scheme( $url ) {
+	return preg_replace( '/^[^:]+:\/\//', '//', $url );
+}
+
+/**
+ * Try to find file path by its uri and read the file contents
+ * @param string $file_uri
+ * @return bool|string false or string - the file contents
+ */
+function fw_read_file_by_uri($file_uri) {
+	static $base = null;
+
+	if ($base === null) {
+		$base = array();
+		$base['dir'] = WP_CONTENT_DIR;
+		$base['uri'] = ltrim(content_url(), '/');
+		$base['uri_prefix_regex'] = '/^'. preg_quote($base['uri'], '/') .'/';
+	}
+
+	$file_rel_path = preg_replace($base['uri_prefix_regex'], '', $file_uri);
+
+	if ($base['uri'] === $file_rel_path) {
+		// the file is not inside base dir
+		return false;
+	}
+
+	$file_path = $base['dir'] .'/'. $file_rel_path;
+
+	if (!file_exists($file_path)) {
+		return false;
+	}
+
+	return file_get_contents($file_path);
+}
+
+/**
+ * Make stylesheet contents (portable) independent of directory location
+ * For e.g. replace relative paths 'url(img/bg.png)' with full paths 'url(http://site.com/assets/img/bg.png)'
+ *
+ * @param string $href 'http://.../style.css'
+ * @param null|string $contents If not specified, will try to read from $href
+ * @return bool|string false - on failure; string - stylesheet contents
+ */
+function fw_make_stylesheet_portable($href, $contents = null) {
+	if (is_null($contents)) {
+		$contents = fw_read_file_by_uri($href);
+
+		if ($contents === false) {
+			return false;
+		}
+	}
+
+	$dir_uri = dirname($href);
+
+	/**
+	 * Replace relative 'url(img/bg.png)'
+	 * with full 'url(http://site.com/assets/img/bg.png)'
+	 *
+	 * Do not touch if url starts with:
+	 * - 'https://'
+	 * - 'http://'
+	 * - '/' (also matches '//')
+	 * - '#' (for css property: "behavior: url(#behaveBinObject)")
+	 * - 'data:'
+	 */
+	$contents = preg_replace(
+		'/url\s*\((?!\s*[\'"]?(?:\/|data\:|\#|(?:https?:)?\/\/))\s*([\'"])?/',
+		'url($1'. $dir_uri .'/',
+		$contents
+	);
+
+	return $contents;
 }

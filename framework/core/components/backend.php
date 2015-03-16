@@ -226,6 +226,11 @@ final class _FW_Component_Backend
 			);
 		}
 
+		/**
+		 * Important!
+		 * Call wp_enqueue_media() before wp_enqueue_script('fw') (or using 'fw' in your script dependencies)
+		 * otherwise fw.OptionsModal won't work
+		 */
 		{
 			wp_register_style(
 				'fw',
@@ -245,6 +250,11 @@ final class _FW_Component_Backend
 			wp_localize_script('fw', '_fw_localized', array(
 				'FW_URI'   => fw_get_framework_directory_uri(),
 				'SITE_URI' => site_url(),
+				'l10n' => array(
+					'done' => __('Done', 'fw'),
+					'ah_sorry' => __('Ah, Sorry', 'fw'),
+					'save' => __('Save', 'fw'),
+				),
 			));
 		}
 
@@ -259,7 +269,7 @@ final class _FW_Component_Backend
 			wp_register_script(
 				'fw-backend-options',
 				fw_get_framework_directory_uri('/static/js/backend-options.js'),
-				array('fw-events', 'postbox', 'jquery-ui-tabs', 'fw'),
+				array('fw', 'fw-events', 'postbox', 'jquery-ui-tabs'),
 				fw()->manifest->get_version(),
 				true
 			);
@@ -329,6 +339,7 @@ final class _FW_Component_Backend
 			wp_register_script(
 				'fw-uri',
 				fw_get_framework_directory_uri('/static/libs/uri/URI.js'),
+				array(),
 				fw()->manifest->get_version(),
 				true
 			);
@@ -338,6 +349,17 @@ final class _FW_Component_Backend
 			wp_register_script(
 				'fw-moment',
 				fw_get_framework_directory_uri('/static/libs/moment/moment.min.js'),
+				array(),
+				fw()->manifest->get_version(),
+				true
+			);
+		}
+
+		{
+			wp_register_script(
+				'fw-form-helpers',
+				fw_get_framework_directory_uri('/static/js/fw-form-helpers.js'),
+				array('jquery'),
 				fw()->manifest->get_version(),
 				true
 			);
@@ -366,21 +388,41 @@ final class _FW_Component_Backend
 		}
 
 		/**
+		 * Collect $hookname that contains $data['slug'] before the action
+		 * and skip them in verification after action
+		 */
+		{
+			global $_registered_pages;
+
+			$found_hooknames = array();
+
+			if (!empty($_registered_pages)) {
+				foreach ( $_registered_pages as $hookname => $b ) {
+					if ( strpos( $hookname, $data['slug'] ) !== false ) {
+						$found_hooknames[$hookname] = true;
+					}
+				}
+			}
+		}
+
+		/**
 		 * Use this action if you what to add the settings page in a custom place in menu
 		 * Usage example http://pastebin.com/0KQXLPZj
 		 */
 		do_action('fw_backend_add_custom_settings_menu', $data);
 
 		/**
-		 * check if settings menu was added in the action above
+		 * Check if settings menu was added in the action above
 		 */
 		{
-			global $_registered_pages;
-
 			$menu_exists = false;
 
 			if (!empty($_registered_pages)) {
 				foreach ( $_registered_pages as $hookname => $b ) {
+					if (isset($found_hooknames[$hookname])) {
+						continue;
+					}
+
 					if ( strpos( $hookname, $data['slug'] ) !== false ) {
 						$menu_exists = true;
 						break;
@@ -448,7 +490,12 @@ final class _FW_Component_Backend
 	{
 		echo '<div class="wrap">';
 
-		echo '<h2>'. __('Theme Settings', 'fw') .'</h2><br/>';
+		if (fw()->theme->get_config('settings_form_side_tabs')) {
+			// this is needed for flash messages (admin notices) to be displayed properly
+			echo '<h2 class="fw-hidden"></h2>';
+		} else {
+			echo '<h2>' . __('Theme Settings', 'fw') . '</h2><br/>';
+		}
 
 		$this->settings_form->render();
 
@@ -556,25 +603,95 @@ final class _FW_Component_Backend
 
 		$old_values = (array)fw_get_db_post_option($post_id);
 
-		$options_values = array_merge(
-			$old_values,
+		fw_set_db_post_option(
+			$post_id,
+			null,
 			fw_get_options_values_from_input(
 				fw()->theme->get_post_options($post->post_type)
 			)
 		);
 
-		fw_set_db_post_option($post_id, null, $options_values);
+		do_action('fw_save_post_options', $post_id, $post, $old_values);
+	}
+
+	/**
+	 * Update all post meta `fw_option:<option-id>` with values from post options that has the 'save-in-separate-meta' parameter
+	 * @param int $post_id
+	 * @return bool
+	 */
+	public function _sync_post_separate_meta($post_id)
+	{
+		$post_type = get_post_type($post_id);
+
+		if (!$post_type) {
+			return false;
+		}
+
+		$meta_prefix = 'fw_option:';
 
 		/**
-		 * find options that requested to be saved in separate meta
+		 * Collect all options that needs to be saved in separate meta
 		 */
-		foreach (fw_extract_only_options(fw()->theme->get_post_options($post->post_type)) as $option_id => $option) {
-			if (isset($option['save-in-separate-meta']) && $option['save-in-separate-meta']) {
-				fw_update_post_meta($post_id, 'fw_option:'. $option_id, $options_values[$option_id]);
+		{
+			$options_values = fw_get_db_post_option($post_id);
+
+			$separate_meta_options = array();
+
+			foreach (
+				fw_extract_only_options(fw()->theme->get_post_options($post_type))
+				as $option_id => $option
+			) {
+				if (
+					isset($option['save-in-separate-meta'])
+					&&
+					$option['save-in-separate-meta']
+					&&
+					array_key_exists($option_id, $options_values)
+				) {
+					$separate_meta_options[ $meta_prefix . $option_id ] = $options_values[$option_id];
+				}
+			}
+
+			unset($options_values);
+		}
+
+		/**
+		 * Delete meta that starts with $meta_prefix
+		 */
+		{
+			/** @var wpdb $wpdb */
+			global $wpdb;
+
+			foreach(
+				$wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT meta_key " .
+						"FROM {$wpdb->postmeta} " .
+						"WHERE meta_key LIKE %s AND post_id = %d",
+						$wpdb->esc_like($meta_prefix) .'%',
+						$post_id
+					)
+				)
+				as $row
+			) {
+				if (array_key_exists($row->meta_key, $separate_meta_options)) {
+					/**
+					 * This meta exists and will be updated below.
+					 * Do not delete for performance reasons, instead of delete->insert will be performed only update
+					 */
+					continue;
+				} else {
+					// this option does not exist anymore
+					delete_post_meta($post_id, $row->meta_key);
+				}
 			}
 		}
 
-		do_action('fw_save_post_options', $post_id, $post, $old_values);
+		foreach ($separate_meta_options as $meta_key => $option_value) {
+			update_post_meta($post_id, $meta_key, $option_value);
+		}
+
+		return true;
 	}
 
 	public function _action_term_edit($term_id, $tt_id, $taxonomy)
@@ -585,12 +702,12 @@ final class _FW_Component_Backend
 
 		$old_values = (array)fw_get_db_term_option($term_id, $taxonomy);
 
-		fw_set_db_term_option($term_id, $taxonomy, null,
-			array_merge(
-				$old_values,
-				fw_get_options_values_from_input(
-					fw()->theme->get_taxonomy_options($taxonomy)
-				)
+		fw_set_db_term_option(
+			$term_id,
+			$taxonomy,
+			null,
+			fw_get_options_values_from_input(
+				fw()->theme->get_taxonomy_options($taxonomy)
 			)
 		);
 
@@ -599,6 +716,53 @@ final class _FW_Component_Backend
 
 	public function _action_admin_enqueue_scripts()
 	{
+		global $current_screen, $plugin_page, $post;
+
+		/**
+		 * Enqueue settings options static in <head>
+		 */
+		{
+			if ($this->_get_settings_page_slug() === $plugin_page) {
+				fw()->backend->enqueue_options_static(
+					fw()->theme->get_settings_options()
+				);
+
+				do_action('fw_admin_enqueue_scripts:settings');
+			}
+		}
+
+		/**
+		 * Enqueue post options static in <head>
+		 */
+		{
+			if ('post' === $current_screen->base && $post) {
+				fw()->backend->enqueue_options_static(
+					fw()->theme->get_post_options($post->post_type)
+				);
+
+				do_action('fw_admin_enqueue_scripts:post', $post);
+			}
+		}
+
+		/**
+		 * Enqueue term options static in <head>
+		 */
+		{
+			if (
+				'edit-tags' === $current_screen->base
+				&&
+				$current_screen->taxonomy
+				&&
+				!empty($_GET['tag_ID'])
+			) {
+				fw()->backend->enqueue_options_static(
+					fw()->theme->get_taxonomy_options($current_screen->taxonomy)
+				);
+
+				do_action('fw_admin_enqueue_scripts:term', $current_screen->taxonomy);
+			}
+		}
+
 		$this->register_static();
 	}
 
@@ -730,11 +894,11 @@ final class _FW_Component_Backend
 
 	public function _settings_form_render($data)
 	{
-		/**
-		 * wp moves flash message error with js after first h2
-		 * if there are no h2 on the page it shows them wrong
-		 */
-		echo '<h2 class="fw-hidden"></h2>';
+		{
+			$this->enqueue_options_static(array());
+
+			wp_enqueue_script('fw-form-helpers');
+		}
 
 		$options = fw()->theme->get_settings_options();
 
@@ -742,52 +906,38 @@ final class _FW_Component_Backend
 			return $data;
 		}
 
-		$values = FW_Request::POST(FW_Option_Type::get_default_name_prefix(), fw_get_db_settings_option());
-
-		echo fw()->backend->render_options($options, $values);
-
-		$data['submit']['html'] = '<button class="button-primary button-large">'. __('Save', 'fw') .'</button>';
-
-		{
-			$focus_tab_input_name = '_focus_tab';
-			$focus_tab_id = trim( FW_Request::POST($focus_tab_input_name, FW_Request::GET($focus_tab_input_name, '')) );
-
-			echo fw_html_tag('input', array(
-				'type'  => 'hidden',
-				'name'  => $focus_tab_input_name,
-				'value' => $focus_tab_id,
-			));
-
-			echo
-				'<script type="text/javascript">' .
-				'jQuery(function($){' .
-				'  fwEvents.one("fw:options:init", function(){' .
-				'    var $form = $("form.fw_form_fw_settings:first");'.
-				'    var inputName = "'. esc_js($focus_tab_input_name) .'";'.
-				'    $form.on("click", ".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a", function(){'.
-				'      var tabId = $(this).attr("href").replace(/^\\#/, "");'.
-				'      $form.find("input[name=\'"+ inputName +"\']").val(tabId);'.
-				'    });'.
-				'    '.
-				'    /* "wait" after tabs initialized */' .
-				'    setTimeout(function(){' .
-				'      var focusTabId = $.trim("'. esc_js($focus_tab_id) .'");'.
-				'      if (!focusTabId.length) return;'.
-				'      var $tabLink = $(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ focusTabId +"\']");'.
-				'      while ($tabLink.length) {'.
-				'        $tabLink.trigger("click");'.
-				'        $tabLink = $tabLink'.
-				'          .closest(".fw-options-tabs-wrapper").parent().closest(".fw-options-tabs-wrapper")'.
-				'          .find("> .fw-options-tabs-list > ul > li > a[href=\'#"+ $tabLink.closest(".fw-options-tab").attr("id") +"\']");'.
-				'      }'.
-				'      '.
-				'      /* click again on focus tab to update the input value */'.
-				'      $(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ focusTabId +"\']").trigger("click");;'.
-				'    }, 200);' .
-				'  });' .
-				'});' .
-				'</script>';
+		if ($values = FW_Request::POST(FW_Option_Type::get_default_name_prefix())) {
+			// This is form submit, extract correct values from $_POST values
+			$values = fw_get_options_values_from_input($options, $values);
+		} else {
+			// Extract previously saved correct values
+			$values = fw_get_db_settings_option();
 		}
+
+		$ajax_submit = fw()->theme->get_config('settings_form_ajax_submit');
+		$side_tabs = fw()->theme->get_config('settings_form_side_tabs');
+
+		$data['attr']['class'] = 'fw-settings-form';
+
+		if ($side_tabs) {
+			$data['attr']['class'] .= ' fw-backend-side-tabs';
+		}
+
+		$data['submit']['html'] = '<!-- -->'; // is generated in view
+
+		do_action('fw_settings_form_render', array(
+			'ajax_submit' => $ajax_submit,
+			'side_tabs' => $side_tabs,
+		));
+
+		fw_render_view(fw_get_framework_directory('/views/backend-settings-form.php'), array(
+			'options' => $options,
+			'values' => $values,
+			'focus_tab_input_name' => '_focus_tab',
+			'reset_input_name' => '_fw_reset_options',
+			'ajax_submit' => $ajax_submit,
+			'side_tabs' => $side_tabs,
+		), false);
 
 		return $data;
 	}
@@ -795,7 +945,7 @@ final class _FW_Component_Backend
 	public function _settings_form_validate($errors)
 	{
 		if (!current_user_can('manage_options')) {
-			$errors['_no_permission'] = __('You have no permissions to change settings options', 'fw');;
+			$errors['_no_permission'] = __('You have no permissions to change settings options', 'fw');
 		}
 
 		return $errors;
@@ -803,19 +953,27 @@ final class _FW_Component_Backend
 
 	public function _settings_form_save($data)
 	{
+		$flash_id = 'fw_settings_form_save';
 		$old_values = (array)fw_get_db_settings_option();
 
-		fw_set_db_settings_option(
-			null,
-			array_merge(
-				$old_values,
+		if (!empty($_POST['_fw_reset_options'])) { // The "Reset" button was pressed
+			fw_set_db_settings_option(null, array());
+
+			FW_Flash_Messages::add($flash_id, __('The options were successfully reset', 'fw'), 'success');
+
+			do_action('fw_settings_form_reset', $old_values);
+		} else { // The "Save" button was pressed
+			fw_set_db_settings_option(
+				null,
 				fw_get_options_values_from_input(
 					fw()->theme->get_settings_options()
 				)
-			)
-		);
+			);
 
-		FW_Flash_Messages::add('fw_settings_form_saved', __('Options successfully saved', 'fw'), 'success');
+			FW_Flash_Messages::add($flash_id, __('The options were successfully saved', 'fw'), 'success');
+
+			do_action('fw_settings_form_saved', $old_values);
+		}
 
 		$redirect_url = fw_current_url();
 
@@ -832,8 +990,6 @@ final class _FW_Component_Backend
 
 		$data['redirect'] = $redirect_url;
 
-		do_action('fw_settings_form_saved', $old_values);
-
 		return $data;
 	}
 
@@ -841,8 +997,8 @@ final class _FW_Component_Backend
 	 * Render options array and return the generated HTML
 	 *
 	 * @param array $options
-	 * @param array $values
-	 * @param array $options_data
+	 * @param array $values Correct values returned by fw_get_options_values_from_input()
+	 * @param array $options_data {id_prefix => ..., name_prefix => ...}
 	 * @param string $design
 	 *
 	 * @return string HTML
@@ -857,6 +1013,7 @@ final class _FW_Component_Backend
 			 */
 			$this->register_static();
 
+			wp_enqueue_media();
 			wp_enqueue_style('fw-backend-options');
 			wp_enqueue_script('fw-backend-options');
 		}
@@ -865,78 +1022,111 @@ final class _FW_Component_Backend
 
 		fw_collect_first_level_options($collected, $options);
 
-		ob_start();
-
-		if (!empty($collected['tabs'])) {
-			fw_render_view(fw_get_framework_directory('/views/backend-tabs.php'), array(
-				'tabs'   => &$collected['tabs'],
-				'values' => &$values,
-				'options_data' => $options_data,
-			), false);
+		if (empty($collected['all'])) {
+			return false;
 		}
-		unset($collected['tabs']);
 
-		if (!empty($collected['boxes'])) {
-			echo '<div class="fw-postboxes metabox-holder">';
+		$html = '';
 
-			foreach ($collected['boxes'] as $id => &$box) {
-				// prepare attributes
-				{
-					$attr = isset($box['attr']) ? $box['attr'] : array();
+		$option = reset($collected['all']);
 
-					unset($attr['id']); // do not allow id overwrite, it is sent in first argument of render_box()
+		$collected_type = $option['type'];
+		$collected_type_options = array(
+			$option['id'] => &$option['option']
+		);
+
+		while ($collected_type_options) {
+			$option = next($collected['all']);
+
+			if ($option) {
+				if ($option['type'] === $collected_type) {
+					$collected_type_options[$option['id']] = &$option['option'];
+					continue;
 				}
-
-				echo $this->render_box(
-					'fw-options-box-'. $id,
-					empty($box['title']) ? ' ' : $box['title'],
-					$this->render_options($box['options'], $values, $options_data),
-					array(
-						'attr' => $attr
-					)
-				);
 			}
 
-			echo '</div>';
-		}
-		unset($collected['boxes']);
+			switch ($collected_type) {
+				case 'tab':
+					$html .= fw_render_view(fw_get_framework_directory('/views/backend-tabs.php'), array(
+						'tabs'         => &$collected_type_options,
+						'values'       => &$values,
+						'options_data' => $options_data,
+					));
+					break;
+				case 'box':
+					$html .= '<div class="fw-backend-postboxes metabox-holder">';
 
-		if (!empty($collected['groups_and_options'])) {
-			foreach ($collected['groups_and_options'] as $id => &$option) {
-				if (isset($option['options'])) { // group
-					// prepare attributes
-					{
-						$attr = isset($option['attr']) ? $option['attr'] : array();
+					foreach ($collected_type_options as $id => &$box) {
+						// prepare attributes
+						{
+							$attr = isset($box['attr']) ? $box['attr'] : array();
 
-						$attr['id'] = 'fw-backend-options-group-'. esc_attr($id);
-
-						if (!isset($attr['class'])) {
-							$attr['class'] = 'fw-backend-options-group';
-						} else {
-							$attr['class'] = 'fw-backend-options-group '. $attr['class'];
+							unset($attr['id']); // do not allow id overwrite, it is sent in first argument of render_box()
 						}
+
+						$html .= $this->render_box(
+							'fw-options-box-'. $id,
+							empty($box['title']) ? ' ' : $box['title'],
+							$this->render_options($box['options'], $values, $options_data),
+							array(
+								'attr' => $attr
+							)
+						);
 					}
 
-					echo '<div '. fw_attr_to_html($attr) .'>';
-					echo $this->render_options($option['options'], $values, $options_data);
-					echo '</div>';
-				} else { // option
-					$data = $options_data;
+					$html .= '</div>';
+					break;
+				case 'group':
+					foreach ($collected_type_options as $id => &$group) {
+						// prepare attributes
+						{
+							$attr = isset($group['attr']) ? $group['attr'] : array();
 
-					$data['value'] = isset($values[$id]) ? $values[$id] : null;
+							$attr['id'] = 'fw-backend-options-group-' . $id;
 
-					echo $this->render_option(
-						$id,
-						$option,
-						$data,
-						$design
-					);
-				}
+							if (!isset($attr['class'])) {
+								$attr['class'] = 'fw-backend-options-group';
+							} else {
+								$attr['class'] = 'fw-backend-options-group ' . $attr['class'];
+							}
+						}
+
+						$html .= '<div ' . fw_attr_to_html($attr) . '>';
+						$html .= $this->render_options($group['options'], $values, $options_data);
+						$html .= '</div>';
+					}
+					break;
+				case 'option':
+					foreach ($collected_type_options as $id => &$_option) {
+						$data = $options_data;
+
+						$data['value'] = isset($values[$id]) ? $values[$id] : null;
+
+						$html .= $this->render_option(
+							$id,
+							$_option,
+							$data,
+							$design
+						);
+					}
+					break;
+				default:
+					$html .= '<p><em>'. __('Unknown collected type', 'fw') .': '. $collected_type .'</em></p>';
+			}
+
+			unset($collected_type, $collected_type_options);
+
+			if ($option) {
+				$collected_type = $option['type'];
+				$collected_type_options = array(
+					$option['id'] => &$option['option']
+				);
+			} else {
+				$collected_type_options = array();
 			}
 		}
-		unset($collected['options']);
 
-		return ob_get_clean();
+		return $html;
 	}
 
 	/**
@@ -957,6 +1147,7 @@ final class _FW_Component_Backend
 			 */
 			$this->register_static();
 
+			wp_enqueue_media();
 			wp_enqueue_style('fw-backend-options');
 			wp_enqueue_script('fw-backend-options');
 		}
