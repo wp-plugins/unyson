@@ -627,17 +627,17 @@ function fw_extract_only_options(array $options, &$_recursion_options = array())
  * @param array $options
  */
 function fw_collect_first_level_options(&$collected, &$options) {
-	if (empty($options))
+	if (empty($options)) {
 		return;
+	}
 
 	if (empty($collected)) {
-		$collected['tabs']    = array();
-		$collected['boxes']   = array();
-		$collected['groups']  = array();
-
-		$collected['options'] = array();
-
-		$collected['groups_and_options'] = array();
+		$collected['tabs'] =
+		$collected['boxes'] =
+		$collected['groups'] =
+		$collected['options'] =
+		$collected['groups_and_options'] =
+		$collected['all'] = array();
 	}
 
 	foreach ($options as $option_id => &$option) {
@@ -653,12 +653,18 @@ function fw_collect_first_level_options(&$collected, &$options) {
 					break;
 				case 'group':
 					$collected['groups'][$option_id] =& $option;
-
 					$collected['groups_and_options'][$option_id] =& $option;
 					break;
 				default:
 					trigger_error('Invalid option container type: '. $option['type'], E_USER_WARNING);
+					continue 2;
 			}
+
+			$collected['all'][ $option['type'] .':~:'. $option_id ] = array(
+				'type'   => $option['type'],
+				'id'     => $option_id,
+				'option' => &$option,
+			);
 		} elseif (
 			is_int($option_id)
 			&&
@@ -698,8 +704,13 @@ function fw_collect_first_level_options(&$collected, &$options) {
 		} elseif (isset($option['type'])) {
 			// simple option, last possible level in options array
 			$collected['options'][$option_id] =& $option;
-
 			$collected['groups_and_options'][$option_id] =& $option;
+
+			$collected['all'][ 'option' .':~:'. $option_id ] = array(
+				'type'   => 'option',
+				'id'     => $option_id,
+				'option' => &$option,
+			);
 		} else {
 			trigger_error('Invalid option: '. $option_id, E_USER_WARNING);
 		}
@@ -725,6 +736,11 @@ function fw_get_options_values_from_input(array $options, $input_array = null) {
 			$option,
 			isset($input_array[$id]) ? $input_array[$id] : null
 		);
+
+		if (is_null($values[$id])) {
+			// do not save null values
+			unset($values[$id]);
+		}
 	}
 
 	return $values;
@@ -923,7 +939,11 @@ function fw_human_time($seconds)
 }
 
 function fw_strlen($string) {
-	return mb_strlen($string, 'UTF-8');
+	if (function_exists('mb_strlen')) {
+		return mb_strlen($string, 'UTF-8');
+	} else {
+		return strlen($string);
+	}
 }
 
 /**
@@ -1052,7 +1072,11 @@ function fw_secure_rand($length)
  */
 function fw_id_to_title($id) {
 	// mb_ucfirst()
-	$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	if (function_exists('mb_strtoupper') && function_exists('mb_substr') && function_exists('mb_strlen')) {
+		$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	} else {
+		$id = strtoupper(substr($id, 0, 1)) . substr($id, 1, strlen($id));
+	}
 
 	return str_replace(array('_', '-'), ' ', $id);
 }
