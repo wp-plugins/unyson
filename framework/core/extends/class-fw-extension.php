@@ -33,23 +33,19 @@ abstract class FW_Extension
 	private $parent;
 
 	/**
-	 * Where this extension was declared: 'framework', 'parent' or 'child'
 	 * @var string
 	 */
-	private $declared_source;
+	private $rel_path;
 
 	/**
-	 * Full path to directory where the extension was first found/declared
-	 * (Search direction: framework -> parent theme -> child theme)
 	 * @var string
 	 */
-	private $declared_dir;
+	private $path;
 
 	/**
-	 * URI to directory where extension was first found/declared
 	 * @var string
 	 */
-	private $declared_URI;
+	private $uri;
 
 	/**
 	 * On what directory depth is the extension
@@ -64,31 +60,28 @@ abstract class FW_Extension
 	private $depth;
 
 	/**
-	 * If _init() was called
-	 * @var bool
+	 * Locations where the extension can look for customizations (overwrite views, options; extend config)
+	 * @var array {'/path' => 'https://uri.to/path'}
 	 */
-	private $initialized = false;
+	private $customizations_locations;
 
-	final public function __construct(&$parent, $declared_dir, $declared_source, $URI, $depth)
+	final public function __construct($data)
 	{
 		if (!self::$access_key) {
 			self::$access_key = new FW_Access_Key('extension');
 		}
 
-		$this->parent          =& $parent;
-		$this->declared_source = $declared_source;
-		$this->declared_dir    = $declared_dir;
-		$this->declared_URI    = $URI . $this->get_rel_path(); // ! set $this->parent before calling get_rel_path()
-		$this->depth           = $depth;
+		$this->rel_path = $data['rel_path'];
+		$this->path     = $data['path'];
+		$this->uri      = $data['uri'];
+		$this->parent   = $data['parent'];
+		$this->depth    = $data['depth'];
+		$this->customizations_locations = $data['customizations_locations'];
 
 		{
-			$manifest = array();
-
-			if (file_exists($this->declared_dir .'/manifest.php')) {
-				$variables = fw_get_variables_from_file($this->declared_dir .'/manifest.php', array('manifest' => array()));
-				$manifest  = $variables['manifest'];
-				unset($variables);
-			}
+			$variables = fw_get_variables_from_file($this->path .'/manifest.php', array('manifest' => array()));
+			$manifest  = $variables['manifest'];
+			unset($variables);
 
 			if (empty($manifest['name'])) {
 				$manifest['name'] = fw_id_to_title($this->get_name());
@@ -132,13 +125,13 @@ abstract class FW_Extension
 
 	/**
 	 * @internal
+	 * @param FW_Access_Key $access_key
+	 * @return mixed
 	 */
-	final public function _call_init()
+	final public function _call_init($access_key)
 	{
-		if ($this->initialized) { // todo: use private key
-			trigger_error('Extension already initialized: '. $this->get_name(), E_USER_ERROR);
-		} else {
-			$this->initialized = true;
+		if ($access_key->get_key() !== 'fw_extensions') {
+			trigger_error(__METHOD__ .' denied', E_USER_ERROR);
 		}
 
 		return $this->_init();
@@ -155,52 +148,38 @@ abstract class FW_Extension
 
 	/**
 	 * @param string $rel_path '/views/test.php'
-	 * @return false|string    '/var/www/wordpress/wp-content/themes/theme-name/framework/extensions/<extension>/views/test.php'
+	 * @return false|string    '/var/www/.../extensions/<extension>/views/test.php'
 	 */
 	final public function locate_path($rel_path)
 	{
-		list(
-			$search_in_framework,
-			$search_in_parent_theme,
-			$search_in_child_theme
-		) = $this->correct_search_in_locations(
-			true,
-			true,
-			true
-		);
+		$locations = $this->customizations_locations;
+		$locations[$this->get_path()] = $this->get_uri();
 
-		$rel_path = $this->get_rel_path() . $rel_path;
+		foreach ($locations as $path => $uri) {
+			if (file_exists($path . $rel_path)) {
+				return $path . $rel_path;
+			}
+		}
 
-		return fw()->extensions->locate_path($rel_path,
-			$search_in_framework,
-			$search_in_parent_theme,
-			$search_in_child_theme
-		);
+		return false;
 	}
 
 	/**
 	 * @param string $rel_path E.g. '/static/js/scripts.js'
-	 * @return string URI E.g. 'http: //wordpress.com/wp-content/themes/theme-name/framework/extensions/<extension>/static/js/scripts.js'
+	 * @return string URI E.g. 'http: //wordpress.com/.../extensions/<extension>/static/js/scripts.js'
 	 */
 	final public function locate_URI($rel_path)
 	{
-		list(
-			$search_in_framework,
-			$search_in_parent_theme,
-			$search_in_child_theme
-		) = $this->correct_search_in_locations(
-			true,
-			true,
-			true
-		);
+		$locations = $this->customizations_locations;
+		$locations[$this->get_path()] = $this->get_uri();
 
-		$rel_path = $this->get_rel_path() . $rel_path;
+		foreach ($locations as $path => $uri) {
+			if (file_exists($path . $rel_path)) {
+				return $uri . $rel_path;
+			}
+		}
 
-		return fw()->extensions->locate_path_URI($rel_path,
-			$search_in_framework,
-			$search_in_parent_theme,
-			$search_in_child_theme
-		);
+		return false;
 	}
 
 	/**
@@ -217,8 +196,7 @@ abstract class FW_Extension
 	final public function get_name()
 	{
 		if ($this->name === null) {
-			$this->name = explode('/', $this->get_declared_path());
-			$this->name = array_pop($this->name);
+			$this->name = basename($this->path);
 		}
 
 		return $this->name;
@@ -226,53 +204,45 @@ abstract class FW_Extension
 
 	/**
 	 * @return string
+	 * @deprecated
 	 */
 	final public function get_declared_source()
 	{
-		return $this->declared_source;
+		return 'deprecated';
 	}
 
 	/**
 	 * @param string $append_rel_path E.g. '/includes/something.php'
 	 * @return string
+	 * @deprecated
 	 */
 	final public function get_declared_path($append_rel_path = '')
 	{
-		return $this->declared_dir . $append_rel_path;
+		return $this->get_path($append_rel_path);
+	}
+
+	final public function get_path($append_rel_path = '')
+	{
+		return $this->path . $append_rel_path;
+	}
+
+	/**
+	 * @param string $append_rel_path E.g. '/includes/foo/bar/script.js'
+	 * @return string
+	 * @deprecated
+	 */
+	final public function get_declared_URI($append_rel_path = '')
+	{
+		return $this->get_uri($append_rel_path);
 	}
 
 	/**
 	 * @param string $append_rel_path E.g. '/includes/foo/bar/script.js'
 	 * @return string
 	 */
-	final public function get_declared_URI($append_rel_path = '')
+	final public function get_uri($append_rel_path = '')
 	{
-		return $this->declared_URI . $append_rel_path;
-	}
-
-	/**
-	 * Used to determine where to search files (options, views, static files)
-	 * Because there is no sense to search (one level up) in framework, if extension is declared in parent theme
-	 * @param bool $search_in_framework
-	 * @param bool $search_in_parent_theme
-	 * @param bool $search_in_child_theme
-	 * @return array
-	 */
-	final public function correct_search_in_locations($search_in_framework, $search_in_parent_theme, $search_in_child_theme)
-	{
-		$source = $this->get_declared_source();
-
-		if ($source == 'parent') {
-			$search_in_framework = false;
-		} elseif ($source == 'child') {
-			$search_in_framework = $search_in_parent_theme = false;
-		}
-
-		if (!is_child_theme()) {
-			$search_in_child_theme = false;
-		}
-
-		return array($search_in_framework, $search_in_parent_theme, $search_in_child_theme);
+		return $this->uri . $append_rel_path;
 	}
 
 	/**
@@ -309,35 +279,6 @@ abstract class FW_Extension
 	}
 
 	/**
-	 * Get path relative to parent "extensions" directory where all extensions are located
-	 * E.g.: /foo/extensions/bar/extensions/hello
-	 * @return string
-	 */
-	final public function get_rel_path()
-	{
-		$cache_key = $this->get_cache_key() .'/rel_path';
-
-		try {
-			return FW_Cache::get($cache_key);
-		} catch (FW_Cache_Not_Found_Exception $e) {
-			$rel_path = array($this->get_name());
-
-			// balk back in parents and generate array(child, ..., parent)
-			$parent_walker = $this;
-			while ($parent_walker = $parent_walker->get_parent()) {
-				$rel_path[] = $parent_walker->get_name();
-			}
-			unset($parent_walker);
-
-			$rel_path = '/'. implode('/extensions/', array_reverse($rel_path));
-
-			FW_Cache::set($cache_key, $rel_path);
-
-			return $rel_path;
-		}
-	}
-
-	/**
 	 * Return config key value, or entire config array
 	 * Config array is merged from child configs
 	 * @param string|null $key Multi key format accepted: 'a/b/c'
@@ -350,33 +291,16 @@ abstract class FW_Extension
 		try {
 			$config = FW_Cache::get($cache_key);
 		} catch (FW_Cache_Not_Found_Exception $e) {
-			list(
-				$search_in_framework,
-				$search_in_parent_theme,
-				$search_in_child_theme
-			) = $this->correct_search_in_locations(
-				true,
-				true,
-				true
-			);
+			$config = array();
 
-			$rel_path = $this->get_rel_path() .'/config.php';
-			$config   = array();
-			$paths    = array();
+			$locations = $this->customizations_locations;
+			$locations[$this->get_path()] = $this->get_uri();
 
-			if ($search_in_framework) {
-				$paths[] = fw_get_framework_directory('/extensions'. $rel_path);
-			}
-			if ($search_in_parent_theme) {
-				$paths[] = fw_get_template_customizations_directory('/extensions'. $rel_path);
-			}
-			if ($search_in_child_theme) {
-				$paths[] = fw_get_stylesheet_customizations_directory('/extensions'. $rel_path);
-			}
+			foreach (array_reverse($locations) as $path => $uri) {
+				$config_path = $path .'/config.php';
 
-			foreach ($paths as $path) {
-				if (file_exists($path)) {
-					$variables = fw_get_variables_from_file($path, array('cfg' => null));
+				if (file_exists($config_path)) {
+					$variables = fw_get_variables_from_file($config_path, array('cfg' => null));
 
 					if (!empty($variables['cfg'])) {
 						$config = array_merge($config, $variables['cfg']);
@@ -384,8 +308,6 @@ abstract class FW_Extension
 					}
 				}
 			}
-
-			unset($path);
 
 			FW_Cache::set($cache_key, $config);
 		}
@@ -418,7 +340,7 @@ abstract class FW_Extension
 		try {
 			return FW_Cache::get($cache_key);
 		} catch (FW_Cache_Not_Found_Exception $e) {
-			$path = $this->get_declared_path('/settings-options.php');
+			$path = $this->get_path('/settings-options.php');
 
 			if (!file_exists($path)) {
 				FW_Cache::set($cache_key, array());
@@ -519,6 +441,16 @@ abstract class FW_Extension
 	final public function get_depth()
 	{
 		return $this->depth;
+	}
+
+	final public function get_customizations_locations()
+	{
+		return $this->customizations_locations;
+	}
+
+	final public function get_rel_path()
+	{
+		return $this->rel_path;
 	}
 
 	/**

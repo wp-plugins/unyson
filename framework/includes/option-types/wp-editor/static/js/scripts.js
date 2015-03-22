@@ -2,6 +2,18 @@
 
 	var init = function() {
 
+		var width = jQuery(this).data('width-type');
+
+		if (width == 'large') {
+			jQuery(this).parents('.fw-backend-option-input-type-wp-editor')
+				.removeClass('width-type-auto')
+				.addClass('width-type-full');
+		} else {
+			jQuery(this).parents('.fw-backend-option-input-type-wp-editor')
+				.removeClass('width-type-auto')
+				.addClass('width-type-fixed');
+		}
+
 		var $textareaWrapper = $(this),
 			$textarea = $textareaWrapper.find('textarea');
 
@@ -33,10 +45,6 @@
 			$btnTabs	= parent.find('.wp-switch-editor').removeAttr("onclick"),
 			id			= $textarea.attr('id'),
 			settings	= {id: id , buttons: 'strong,em,link,block,del,ins,img,ul,ol,li,code,more,close'};
-
-		/**
-		 * set tinymce settings for modal use teeny setting
-		 */
 
 
 		var tmceCustomSettings = $textarea.parents('.fw-option-type-wp-editor').data('tinymce'),
@@ -84,7 +92,9 @@
 				initTinyMCESettings.selector = '#' + id;
 				tinymce.init(initTinyMCESettings);
 				parent.removeClass('html-active').addClass('tmce-active');
-				QTags._buttonsInit();
+				if (QTags != undefined) {
+					QTags._buttonsInit();
+				}
 			}
 			else
 			{
