@@ -48,7 +48,8 @@ class FW_Option_Type_Addable_Popup extends FW_Option_Type
 		$option['attr']['data-for-js'] = json_encode(array(
 			'title' => empty($option['popup-title']) ? $option['label'] : $option['popup-title'],
 			'options' => $this->transform_options($option['popup-options']),
-			'template' => $option['template']
+			'template' => $option['template'],
+			'size' => $option['size'],
 		));
 
 		$sortable_image = fw_get_framework_directory_uri('/static/img/sort-vertically.png');
@@ -64,7 +65,19 @@ class FW_Option_Type_Addable_Popup extends FW_Option_Type
 	{
 		$new_options = array();
 		foreach ($options as $id => $option) {
-			$new_options[] = array($id => $option);
+			if (is_int($id)) {
+				/**
+				 * this happens when in options array are loaded external options using fw()->theme->get_options()
+				 * and the array looks like this
+				 * array(
+				 *    'hello' => array('type' => 'text'), // this has string key
+				 *    array('hi' => array('type' => 'text')) // this has int key
+				 * )
+				 */
+				$new_options[] = $option;
+			} else {
+				$new_options[] = array($id => $option);
+			}
 		}
 		return $new_options;
 	}
@@ -120,6 +133,7 @@ class FW_Option_Type_Addable_Popup extends FW_Option_Type
 			),
 			'template' => '',
 			'popup-title' => null,
+			'size' => 'small' // small, medium, large
 		);
 	}
 
