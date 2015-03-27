@@ -49,6 +49,12 @@
 
 					$input.css('background-color', ui.color.toCSS());
 					$input.css('color', ($alpha_slider.slider("value") > 40) ? ui.color.getMaxContrastColor().toCSS() : '#000000');
+
+					$input.trigger('fw:rgba:color:picker:changed', {
+						$element: $input,
+						iris: $input.data('a8cIris'),
+						alphaSlider: $alpha_slider.data('uiSlider')
+					});
 				}
 			});
 
@@ -70,7 +76,7 @@
 				value: Color($input.val())._alpha * 100,
 				range: "max",
 				step: 1,
-				min: 1,
+				min: 0,
 				max: 100,
 				slide: function (event, ui) {
 					$(this).find('.ui-slider-handle').text(ui.value);
@@ -103,6 +109,12 @@
 					var new_alpha_val = parseFloat(ui.value),
 						iris = $input.data('a8cIris');
 					iris._color._alpha = new_alpha_val / 100.0;
+
+					$input.trigger('fw:rgba:color:picker:changed', {
+						$element: $input,
+						iris: $input.data('a8cIris'),
+						alphaSlider: $alpha_slider.data('uiSlider')
+					});
 				}
 			});
 
