@@ -17,14 +17,14 @@ class FW_Option_Type_Range_Slider extends FW_Option_Type {
 			wp_enqueue_style(
 				'fw-option-' . $this->get_type() . 'ion-range-slider',
 				fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/libs/ion-range-slider/ion.rangeSlider.css' ),
-				fw()->manifest->get_version()
+				'2.0.3'
 			);
 
 			wp_enqueue_script(
 				'fw-option-' . $this->get_type() . 'ion-range-slider',
 				fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/libs/ion-range-slider/ion.rangeSlider.min.js' ),
 				array( 'jquery', 'fw-moment' ),
-				fw()->manifest->get_version()
+				'2.0.3'
 			);
 		}
 
@@ -37,7 +37,7 @@ class FW_Option_Type_Range_Slider extends FW_Option_Type {
 		wp_enqueue_script(
 			'fw-option-' . $this->get_type(),
 			fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/js/scripts.js' ),
-			array( 'jquery', 'underscore', 'fw-option-' . $this->get_type() . 'ion-range-slider' ),
+			array( 'jquery', 'fw-events', 'underscore', 'fw-option-' . $this->get_type() . 'ion-range-slider' ),
 			fw()->manifest->get_version()
 		);
 	}
@@ -54,8 +54,9 @@ class FW_Option_Type_Range_Slider extends FW_Option_Type {
 		$option['properties']['from'] = ( isset( $data['value']['from'] ) ) ? $data['value']['from'] : $option['value']['from'];
 		$option['properties']['to']   = ( isset( $data['value']['to'] ) ) ? $data['value']['to'] : $option['value']['to'];
 
-		if ($option['properties']['from'] > $option['properties']['to']) {
-			$option['properties']['from'] = $option['properties']['to'];
+		if ( isset( $option['properties']['values'] ) && is_array( $option['properties']['values'] ) ) {
+			$option['properties']['from'] = array_search( $option['properties']['from'], $option['properties']['values'] );
+			$option['properties']['to']   = array_search( $option['properties']['to'], $option['properties']['values'] );
 		}
 
 		$option['attr']['data-fw-irs-options'] = json_encode(
@@ -95,12 +96,16 @@ class FW_Option_Type_Range_Slider extends FW_Option_Type {
 	 * @internal
 	 */
 	protected function _get_value_from_input( $option, $input_value ) {
-		$input_values = array_map( 'intval', explode( ';', $input_value ) );
+		if (is_null($input_value)) {
+			return $option['value'];
+		} else {
+			$input_values = ( isset( $option['properties']['values'] ) && is_array( $option['properties']['values'] ) ) ? explode( ';', $input_value ) : array_map( 'intval', explode( ';', $input_value ) );
 
-		return array(
-			'from' => $input_values[0],
-			'to'   => $input_values[1],
-		);
+			return array(
+				'from' => $input_values[0],
+				'to' => $input_values[1],
+			);
+		}
 	}
 
 }
