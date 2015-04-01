@@ -90,6 +90,9 @@ class FW_Form {
 				$data['attr'] = array();
 			}
 
+			$data['attr']['data-fw-form-id'] = $this->id;
+
+			/** @deprecated */
 			$data['attr']['class'] = 'fw_form_' . $this->id;
 
 			if ( isset( $data['attr']['method'] ) ) {
@@ -231,14 +234,58 @@ class FW_Form {
 		$this->validate();
 
 		if ( $this->is_ajax() ) {
-			if ( $this->is_valid() ) {
-				$this->save();
+			$json_data = array();
 
-				wp_send_json_success();
+			if ( $this->is_valid() ) {
+				$json_data['save_data'] = $this->save();
 			} else {
-				wp_send_json_error( array(
-					'errors' => $this->get_errors()
-				) );
+				$json_data['errors'] = $this->get_errors();
+			}
+
+			/**
+			 * Transform flash messages structure from
+			 * array( 'type' => array( 'message_id' => array(...) ) )
+			 * to
+			 * array( 'type' => array( 'message_id' => 'Message' ) )
+			 */
+			{
+				$flash_messages = array();
+
+				foreach (FW_Flash_Messages::_get_messages(true) as $type => $messages) {
+					$flash_messages[$type] = array();
+
+					foreach ($messages as $id => $message_data) {
+						$flash_messages[$type][$id] = $message_data['message'];
+					}
+				}
+
+				$json_data['flash_messages'] = $flash_messages;
+			}
+
+			/**
+			 * Important!
+			 * We can't send form html in response:
+			 *
+			 * ob_start();
+			 * $this->render();
+			 * $json_data['html'] = ob_get_clean();
+			 *
+			 * because the render() method is not called within this class
+			 * but by the code that created and owns the $form,
+			 * and it's usually called with some custom data $this->render(array(...))
+			 * that it's impossible to know here which data is that.
+			 * If we will call $this->render(); without data, this may throw errors because
+			 * the render callback may expect some custom data.
+			 * Also it may be called or not, depending on the owner code inner logic.
+			 *
+			 * The only way to get the latest form html on ajax submit
+			 * is to make a new ajax GET to current page and extract form html from the response.
+			 */
+
+			if ( $this->is_valid() ) {
+				wp_send_json_success($json_data);
+			} else {
+				wp_send_json_error($json_data);
 			}
 		} else {
 			if ( ! $this->is_valid() ) {
@@ -279,31 +326,6 @@ class FW_Form {
 	 * @param array $data
 	 */
 	public function render( $data = array() ) {
-		?>
-		<form <?php echo fw_attr_to_html( $this->attr ) ?> ><?php
-
-		if ( ! empty( $this->attr['action'] ) && $this->attr['method'] == 'get' ) {
-			/**
-			 * Add query vars from action attribute url to hidden inputs to not loose them
-			 * For cases when get_search_link() will return '.../?s=~',
-			 *  the 's' will be lost after submit and no search page will be shown
-			 */
-
-			parse_str( parse_url( $this->attr['action'], PHP_URL_QUERY ), $query_vars );
-
-			if ( ! empty( $query_vars ) ) {
-				foreach ( $query_vars as $var_name => $var_value ) {
-					?><input type="hidden" name="<?php print esc_attr( $var_name ) ?>"
-					         value="<?php print fw_htmlspecialchars( $var_value ) ?>" /><?php
-				}
-			}
-		}
-
-		?><input type="hidden" name="<?php print self::$id_input_name; ?>" value="<?php print $this->id ?>" /><?php
-		if ( $this->attr['method'] == 'post' ) {
-			wp_nonce_field( 'submit_fwf', '_nonce_' . md5( $this->id ) );
-		}
-
 		$render_data = array(
 			'submit' => array(
 				'value' => __( 'Submit', 'fw' ),
@@ -313,14 +335,18 @@ class FW_Form {
 				 */
 				'html'  => null,
 			),
-			'data'   => $data,
-			'attr'   => $this->attr,
+			'data' => $data,
+			'attr' => $this->attr,
 		);
 
 		unset( $data );
 
 		if ( $this->callbacks['render'] ) {
-			$data = call_user_func_array( $this->callbacks['render'], array( $render_data ) );
+			ob_start();
+
+			$data = call_user_func_array( $this->callbacks['render'], array( $render_data, $this ) );
+
+			$html = ob_get_clean();
 
 			if ( empty( $data ) ) {
 				// fix if returned wrong data from callback
@@ -332,14 +358,106 @@ class FW_Form {
 			unset( $data );
 		}
 
-		// In filter can be defined custom html for submit button
-		if ( isset( $render_data['submit']['html'] ) ):
-			print $render_data['submit']['html'];
-		else:
-			?><input type="submit" value="<?php print $render_data['submit']['value'] ?>"><?php
-		endif;
+		// display form errors in frontend
+		do {
+			if (is_admin()) {
+				// errors in admin side are displayed by a script at the end of this file
+				break;
+			}
 
-		?></form><?php
+			$submitted_form = FW_Form::get_submitted();
+
+			if ( ! $submitted_form ) {
+				break;
+			}
+
+			if ( $submitted_form->get_id() !== $this->get_id() ) {
+				// the submitted form is not current form
+				break;
+			}
+
+			unset($submitted_form); // not needed anymore, below will be used only with $this (because it's the same form)
+
+			if ( $this->is_valid() ) {
+				break;
+			}
+
+			/**
+			 * Use this action to customize errors display in your theme
+			 */
+			do_action('fw_form_display_errors_frontend', $this);
+
+			if ( $this->errors_accessed() ) {
+				// already displayed, prevent/cancel default display
+				break;
+			}
+
+			$errors = $this->get_errors();
+
+			if (empty($errors)) {
+				break;
+			}
+
+			echo '<ul class="fw-form-errors">';
+
+			foreach ($errors as $input_name => $error_message) {
+				echo fw_html_tag(
+					'li',
+					array(
+						'data-input-name' => $input_name,
+					),
+					$error_message
+				);
+			}
+
+			echo '</ul>';
+
+			unset($errors);
+		} while(false);
+
+		echo '<form '. fw_attr_to_html( $render_data['attr'] ) .' >';
+
+		echo fw_html_tag('input', array(
+			'type'  => 'hidden',
+			'name'  => self::$id_input_name,
+			'value' => $this->id,
+		));
+
+		if ( $render_data['attr']['method'] == 'post' ) {
+			wp_nonce_field( 'submit_fwf', '_nonce_' . md5( $this->id ) );
+		}
+
+		if ( ! empty( $render_data['attr']['action'] ) && $render_data['attr']['method'] == 'get' ) {
+			/**
+			 * Add query vars from the action attribute url to hidden inputs to not loose them
+			 */
+
+			parse_str( parse_url( $render_data['attr']['action'], PHP_URL_QUERY ), $query_vars );
+
+			if ( ! empty( $query_vars ) ) {
+				foreach ( $query_vars as $var_name => $var_value ) {
+					echo fw_html_tag('input', array(
+						'type'  => 'hidden',
+						'name'  => $var_name,
+						'value' => $var_value,
+					));
+				}
+			}
+		}
+
+		echo $html;
+
+		// In filter can be defined custom html for submit button
+		if ( isset( $render_data['submit']['html'] ) ) {
+			echo $render_data['submit']['html'];
+		} else {
+			echo fw_html_tag('input', array(
+				'type' => 'submit',
+				'value' => $render_data['submit']['value']
+			));
+		}
+
+		echo '</form>';
 	}
 
 	/**
@@ -437,7 +555,7 @@ if ( is_admin() ) {
 	 * Display form errors in admin side
 	 * @internal
 	 */
-	function _action_show_fw_form_errors_in_admin() {
+	function _action_fw_form_show_errors_in_admin() {
 		$form = FW_Form::get_submitted();
 
 		if ( ! $form || $form->is_valid() ) {
@@ -448,39 +566,20 @@ if ( is_admin() ) {
 			FW_Flash_Messages::add( 'fw-form-admin-' . $input_name, $error_message, 'error' );
 		}
 	}
-	add_action( 'wp_loaded', '_action_show_fw_form_errors_in_admin', 111 );
+	add_action( 'wp_loaded', '_action_fw_form_show_errors_in_admin', 111 );
 } else {
 	/**
-	 * Detect if form errors was not displayed in frontend then display them with default design
-	 * Do nothing if the theme already displayed the errors
+	 * to disable this use remove_action('wp_print_styles', '_action_fw_form_frontend_default_styles');
 	 * @internal
 	 */
-	function _action_show_fw_form_errors_in_frontend() {
+	function _action_fw_form_frontend_default_styles() {
 		$form = FW_Form::get_submitted();
 
 		if ( ! $form || $form->is_valid() ) {
 			return;
 		}
 
-		if ( $form->errors_accessed() ) {
-			// already displayed
-			return;
-		}
-
-		foreach ($form->get_errors() as $input_name => $error_message) {
-			FW_Flash_Messages::add(
-				'fw-form-error-'. $input_name,
-				$error_message,
-				'error'
-			);
-		}
+		echo '<style type="text/css">.fw-form-errors { color: #bf0000; }</style>';
 	}
-	add_action( 'wp_footer', '_action_show_fw_form_errors_in_frontend',
-		/**
-		 * Use priority later than the default 10.
-		 * In docs (to customize the error messages) will be easier to explain
-		 * to use just add_action('wp_footer', ...) and not bother about priority
-		 */
-		11
-	);
+	add_action( 'wp_print_styles', '_action_fw_form_frontend_default_styles' );
 }
