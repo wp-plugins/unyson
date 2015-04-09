@@ -1,6 +1,5 @@
 (function ($, _, fwEvents, window) {
-
-	addablePopup = function () {
+	var addablePopup = function () {
 		var $this = $(this),
 			$defaultItem = $this.find('.item.default'),
 			nodes = {
@@ -15,7 +14,8 @@
 			utils = {
 				modal: new fw.OptionsModal({
 					title: data.title,
-					options: data.options
+					options: data.options,
+					size : data.size
 				}),
 				countItems: function () {
 					return nodes.$itemsWrapper.find('.item:not(.default)').length;
