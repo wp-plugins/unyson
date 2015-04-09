@@ -169,11 +169,50 @@ unset($data);
 		}
 		?>
 	</div>
-	<?php if (!$something_displayed): ?>
-	<script type="text/javascript">
-		jQuery(function($){
-			$('#fw-extensions-list-available').remove();
-		});
-	</script>
+
+	<?php if ($something_displayed): ?>
+		<!-- show/hide not compatible extensions -->
+		<p class="fw-text-center toggle-not-compat-ext-btn-wrapper"><?php
+			echo fw_html_tag(
+				'a',
+				array(
+					'href' => '#',
+					'onclick' => 'return false;',
+					'class' => 'button toggle-not-compat-ext-btn',
+					'style' => 'box-shadow:none;'
+				),
+				'<span class="the-show-text">'. __('Show other extensions', 'fw') .'</span>'.
+				'<span class="the-hide-text fw-hidden">'. __('Hide other extensions', 'fw') .'</span>'
+			);
+			?></p>
+		<script type="text/javascript">
+			jQuery(function($){
+				if (
+					!$('.fw-extensions-list .fw-extensions-list-item.not-compatible').length
+					||
+					<?php echo empty($lists['supported']) ? 'true' : 'false' ?>
+				) {
+					// disable the show/hide feature
+					$('#fw-extensions-list-wrapper .toggle-not-compat-ext-btn-wrapper').addClass('fw-hidden');
+				} else {
+					$('#fw-extensions-list-wrapper .fw-extensions-list .fw-extensions-list-item.not-compatible').fadeOut('fast');
+
+					$('#fw-extensions-list-wrapper .toggle-not-compat-ext-btn-wrapper').on('click', function(){
+						$('#fw-extensions-list-wrapper .fw-extensions-list .fw-extensions-list-item.not-compatible')[
+							$(this).find('.the-hide-text').hasClass('fw-hidden') ? 'fadeIn' : 'fadeOut'
+							]();
+
+						$(this).find('.the-show-text, .the-hide-text').toggleClass('fw-hidden');
+					});
+				}
+			});
+		</script>
+		<!-- end: show/hide not compatible extensions -->
+	<?php else: ?>
+		<script type="text/javascript">
+			jQuery(function($){
+				$('#fw-extensions-list-available').remove();
+			});
+		</script>
 	<?php endif; ?>
 </div>
