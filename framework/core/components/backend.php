@@ -6,6 +6,7 @@
  * Backend functionality
  */
 final class _FW_Component_Backend {
+
 	/** @var callable */
 	private $print_meta_box_content_callback;
 
@@ -128,9 +129,13 @@ final class _FW_Component_Backend {
 	private function add_actions() {
 		add_action( 'admin_menu', array( $this, '_action_admin_menu' ) );
 		add_action( 'add_meta_boxes', array( $this, '_action_create_post_meta_boxes' ), 10, 2 );
-		add_action( 'save_post', array( $this, '_action_save_post' ), 10, 2 );
 		add_action( 'init', array( $this, '_action_init' ), 20 );
 		add_action( 'admin_enqueue_scripts', array( $this, '_action_admin_enqueue_scripts' ), 8 );
+
+		add_action( 'save_post', array( $this, '_action_save_post' ), 7, 3 );
+		add_action( 'wp_restore_post_revision', array( $this, '_action_restore_post_revision' ), 10, 2 );
+		add_action( '_wp_put_post_revision', array( $this, '_action__wp_put_post_revision' ) );
+		add_action( 'wp_creating_autosave', array( $this, '_action_trigger_wp_create_autosave') );
 
 		// render and submit options from javascript
 		{
@@ -592,58 +597,183 @@ final class _FW_Component_Backend {
 	}
 
 	/**
-	 * @param int $post_id
-	 * @param WP_Post $post
+	 * Experimental custom options save
+	 * @param array $options
+	 * @param array $values
+	 * @return array
 	 */
-	public function _action_save_post( $post_id, $post ) {
-		if ( ! fw_is_real_post_save( $post_id )
-		     && ! wp_is_post_revision( $post_id )
-		     && ! wp_is_post_autosave( $post_id )
-		) {
-			return;
-		}
-
-		if ( wp_is_post_autosave( $post_id ) ) {
-			$original_id   = wp_is_post_autosave( $post_id );
-			$original_post = get_post( $original_id );
-		} else if ( wp_is_post_revision( $post_id ) ) {
-			$original_id   = wp_is_post_revision( $post_id );
-			$original_post = get_post( $original_id );
-		} else {
-			$original_id   = $post_id;
-			$original_post = $post;
-		}
-
-		$old_values = (array) fw_get_db_post_option( $original_id );
-
+	private function process_options_handlers($options, $values)
+	{
 		$handled_values = array();
-		$all_options = fw_extract_only_options(fw()->theme->get_post_options($original_post->post_type));
-		$options_values = fw_get_options_values_from_input( fw()->theme->get_post_options($original_post->post_type) );
 
-		foreach ($all_options as $option_id => $option) {
+		foreach (
+			fw_extract_only_options($options)
+			as $option_id => $option
+		) {
 			if (
-				isset($option['option_handler']) &&
+				isset($option['option_handler'])
+				&&
 				$option['option_handler'] instanceof FW_Option_Handler
 			) {
-
 				/*
 				 * if the option has a custom option_handler
 				 * the saving is delegated to the handler,
 				 * so it does not go to the post_meta
 				 */
-				$option['option_handler']->save_option_value($option_id, $option, $options_values[$option_id]);
+				$option['option_handler']->save_option_value($option_id, $option, $values[$option_id]);
 
-				$handled_values[$option_id] = $options_values[$option_id];
+				$handled_values[$option_id] = true;
 			}
 		}
 
+		return $handled_values;
+	}
+
+	/**
+	 * @param int $post_id
+	 * @param WP_Post $post
+	 * @param bool $update
+	 */
+	public function _action_save_post( $post_id, $post, $update ) {
+		if (intval(FW_Request::POST('post_ID')) == $post_id) {
+			/**
+			 * This happens on regular post form submit
+			 * All data from $_POST belongs this $post
+			 * so we save them in its post meta
+			 */
+
+			static $post_options_save_happened = false;
+			if ($post_options_save_happened) {
+				/**
+				 * Prevent multiple options save for same post
+				 * It can happen from a recursion or wp_update_post() for same post id
+				 */
+				return;
+			} else {
+				$post_options_save_happened = true;
+			}
+
+			$old_values = (array)fw_get_db_post_option($post_id);
+			$current_values = fw_get_options_values_from_input(
+				fw()->theme->get_post_options($post->post_type)
+			);
+
+			fw_set_db_post_option(
+				$post_id,
+				null,
+				array_diff_key( // remove handled values
+					$current_values,
+					$this->process_options_handlers(
+						fw()->theme->get_post_options($post->post_type),
+						$current_values
+					)
+				)
+			);
+
+			/**
+			 * @deprecated
+			 * Use the 'fw_post_options_update' action
+			 */
+			do_action( 'fw_save_post_options', $post_id, $post, $old_values );
+		} elseif ($original_post_id = wp_is_post_revision( $post_id )) {
+			/**
+			 * Do nothing, the
+			 * - '_wp_put_post_revision'
+			 * - 'wp_restore_post_revision'
+			 * - 'wp_creating_autosave'
+			 * actions will handle this
+			 */
+		} elseif ($original_post_id = wp_is_post_autosave( $post_id )) {
+			// fixme: I don't know how to test this. The execution never entered here
+			FW_Flash_Messages::add(fw_rand_md5(), 'Unhandled auto-save');
+		} else {
+			/**
+			 * This happens on:
+			 * - post add (auto-draft): do nothing
+			 * - revision restore: do nothing, that is handled by the 'wp_restore_post_revision' action
+			 */
+		}
+	}
+
+	/**
+	 * @param array $autosave
+	 *
+	 * @internal
+	 **/
+	public function _action_trigger_wp_create_autosave( $autosave ) {
+		add_action( 'save_post', array( $this, '_action_update_autosave_options' ), 10, 2 );
+	}
+
+	/**
+	 * Happens on post Preview
+	 *
+	 * @param int $post_id
+	 * @param WP_Post $post
+	 *
+	 * @internal
+	 **/
+	public function _action_update_autosave_options( $post_id, $post ) {
+		remove_action( 'save_post', array( $this, '_action_update_autosave_options' ) );
+		remove_action( 'save_post', array( $this, '_action_save_post' ) );
+
+		$parent = get_post($post->post_parent);
+
+		if ( ! $parent instanceof WP_Post ) {
+			return;
+		}
+
+		$current_values = fw_get_options_values_from_input(
+			fw()->theme->get_post_options($parent->post_type)
+		);
+
+		fw_set_db_post_option(
+			$post->ID,
+			null,
+			array_diff_key( // remove handled values
+				$current_values,
+				$this->process_options_handlers(
+					fw()->theme->get_post_options($parent->post_type),
+					$current_values
+				)
+			)
+		);
+
+		add_action( 'save_post', array( $this, '_action_save_post' ), 7, 3 );
+	}
+
+	/**
+	 * @param $post_id
+	 * @param $revision_id
+	 */
+	public function _action_restore_post_revision($post_id, $revision_id)
+	{
+		/**
+		 * Copy options meta from revision to post
+		 */
 		fw_set_db_post_option(
 			$post_id,
 			null,
-			array_diff_key($options_values, $handled_values) //unset $handled_values
+			(array)fw_get_db_post_option($revision_id, null, array())
 		);
+	}
 
-		do_action( 'fw_save_post_options', $post_id, $post, $old_values );
+	/**
+	 * @param $revision_id
+	 */
+	public function _action__wp_put_post_revision($revision_id)
+	{
+		/**
+		 * Copy options meta from post to revision
+		 */
+		fw_set_db_post_option(
+			$revision_id,
+			null,
+			(array)fw_get_db_post_option(
+				wp_is_post_revision($revision_id),
+				null,
+				array()
+			)
+		);
 	}
 
 	/**
@@ -730,6 +860,11 @@ final class _FW_Component_Backend {
 	public function _action_term_edit( $term_id, $tt_id, $taxonomy ) {
 		if ( ! isset( $_POST['action'] ) || ! isset( $_POST['taxonomy'] ) ) {
 			return; // this is not real term form submit, abort save
+		}
+
+		if (intval(FW_Request::POST('tag_ID')) != $term_id) {
+			// the $_POST values belongs to another term, do not save them into this one
+			return;
 		}
 
 		$old_values = (array) fw_get_db_term_option( $term_id, $taxonomy );

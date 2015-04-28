@@ -74,6 +74,45 @@ class FW_Option_Type_Multi_Picker extends FW_Option_Type
 			$option['attr']['class'] .= ' fw-option-type-multi-picker-without-borders';
 		}
 
+		/**
+		 * Leave only select choice options to be rendered in the browser
+		 * the rest move to attr[data-options-template] to be rendered on choice change.
+		 * This should improve page loading speed.
+		 */
+		{
+			{
+				reset($option['picker']);
+				$picker_key   = key($option['picker']);
+				$picker_type  = $option['picker'][$picker_key]['type'];
+				$picker       = $option['picker'][$picker_key];
+				$picker_value = fw()->backend->option_type($picker_type)->get_value_from_input(
+					$picker,
+					isset($data['value'][$picker_key]) ? $data['value'][$picker_key] : null
+				);
+			}
+
+			$skip_first = true;
+			foreach ($options_array as $group_id => &$group) {
+				if ($skip_first) {
+					// first is picker
+					$skip_first = false;
+					continue;
+				}
+
+				if ($group_id === $id .'-'. $picker_value) {
+					// skip selected choice options
+					continue;
+				}
+
+				$options_array[$group_id]['attr']['data-options-template'] = fw()->backend->render_options(
+					$options_array[$group_id]['options'], $data['value'], array(
+					'id_prefix' => $data['id_prefix'] . $id . '-',
+					'name_prefix' => $data['name_prefix'] . '[' . $id . ']',
+				));
+				$options_array[$group_id]['options'] = array();
+			}
+		}
+
 		return '<div ' . fw_attr_to_html($option['attr']) . '>' .
 			fw()->backend->render_options($options_array, $data['value'], array(
 				'id_prefix' => $data['id_prefix'] . $id . '-',
@@ -170,7 +209,7 @@ class FW_Option_Type_Multi_Picker extends FW_Option_Type
 					'type'    => 'group',
 					'attr'    => array('class' => 'choice-group choice-' . $key),
 					'options' => array(
-						$key    => array(
+						$key => array(
 							'type'          => 'multi',
 							'attr'          => array('class' => $show_borders),
 							'label'         => false,
@@ -209,10 +248,14 @@ class FW_Option_Type_Multi_Picker extends FW_Option_Type
 
 		$value = array();
 
-		$value[$picker_key] = fw()->backend->option_type($picker_type)->get_value_from_input(
-			$picker,
-			isset($input_value[$picker_key]) ? $input_value[$picker_key] : null
-		);
+		if (is_null($input_value) && isset($option['value'][$picker_key])) {
+			$value[$picker_key] = $option['value'][$picker_key];
+		} else {
+			$value[$picker_key] = fw()->backend->option_type($picker_type)->get_value_from_input(
+				$picker,
+				isset($input_value[$picker_key]) ? $input_value[$picker_key] : null
+			);
+		}
 
 		// choices
 		switch($picker_type) {
@@ -241,14 +284,16 @@ class FW_Option_Type_Multi_Picker extends FW_Option_Type
 		}
 
 		foreach ($choices as $choice_id => $options) {
-
-			foreach (fw_extract_only_options($options) as $option_id => $option) {
-				$value[$choice_id][$option_id] = fw()->backend->option_type($option['type'])->get_value_from_input(
-					$option,
-					isset($input_value[$choice_id][$option_id]) ? $input_value[$choice_id][$option_id] : null
-				);
+			if (is_null($input_value) && isset($option['value'][$choice_id])) {
+				$value[$choice_id] = $option['value'][$choice_id];
+			} else {
+				foreach (fw_extract_only_options($options) as $option_id => $option) {
+					$value[$choice_id][$option_id] = fw()->backend->option_type($option['type'])->get_value_from_input(
+						$option,
+						isset($input_value[$choice_id][$option_id]) ? $input_value[$choice_id][$option_id] : null
+					);
+				}
 			}
-
 		}
 
 		return $value;

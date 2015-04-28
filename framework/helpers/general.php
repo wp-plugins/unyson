@@ -193,15 +193,16 @@ function fw_print($value) {
 		div.fw_print_r {
 			max-height: 500px;
 			overflow-y: scroll;
-			background: #111;
+			background: #23282d;
 			margin: 10px 30px;
 			padding: 0;
 			border: 1px solid #F5F5F5;
+			border-radius: 3px;
 		}
 
 		div.fw_print_r pre {
-			color: #47EE47;
-			background: #111;
+			color: #78FF5B;
+			background: #23282d;
 			text-shadow: 1px 1px 0 #000;
 			font-family: Consolas, monospace;
 			font-size: 12px;
@@ -213,9 +214,10 @@ function fw_print($value) {
 		}
 
 		div.fw_print_r_group {
-			background: #111;
+			background: #f1f1f1;
 			margin: 10px 30px;
 			padding: 1px;
+			border-radius: 5px;
 		}
 		div.fw_print_r_group div.fw_print_r {
 			margin: 9px;
@@ -786,14 +788,16 @@ function fw_prepare_option_value($value) {
  * Used to check if current post save is a regular "Save" button press
  * not a revision, auto-save or something else
  *
- * todo: make sure it is correct to ignore revision and auto-save.
- * todo: maybe we use wrong (too simplified) the 'save_post' action, maybe we should do something like this http://bit.ly/1xkbmml ?
- *
  * @param $post_id
  * @return bool
+ *
+ * @deprecated
+ * save_post action happens also happens on Preview, Revision, Auto-save Restore, ...
+ * the verifications in this function simplifies too much the save process,
+ * the developers should study and understand better how it works
+ * and handle different save cases in their scripts using wp functions
  */
 function fw_is_real_post_save($post_id) {
-
 	return !(
 		wp_is_post_revision($post_id)
 		|| wp_is_post_autosave($post_id)
