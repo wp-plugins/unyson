@@ -50,13 +50,14 @@ if ( ! class_exists( 'FW_Resize' ) ) {
 			if ( is_numeric( $attachment ) ) {
 				return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $wpdb->posts WHERE ID=%d LIMIT 1", $attachment ), ARRAY_A );
 			} else {
+
 				$attachment = str_replace( array( 'http:', 'https:' ), '', $attachment );
 
 				return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $wpdb->posts WHERE guid LIKE %s LIMIT 1", '%' . $wpdb->esc_like($attachment) ), ARRAY_A );
 			}
 		}
 
-		public function process( $attachment, $width, $height, $crop = false ) {
+		public function process( $attachment, $width = false, $height = false, $crop = false ) {
 
 			$attachment_info = $this->get_attachment_info( $attachment );
 
@@ -72,16 +73,31 @@ if ( ! class_exists( 'FW_Resize' ) ) {
 			$name = wp_basename( $file_path, ".$ext" );
 			$name = preg_replace( '/(.+)(\-\d+x\d+)$/', '$1', $name );
 
+			{
+				if ( ! $width || ! $height ) {
+					$editor       = wp_get_image_editor( $file_path );
+					$size         = $editor->get_size();
+					$orig_width   = $size['width'];
+					$orig_height  = $size['height'];
+					if ( ! $height && $width ) {
+						$height = round( ( $orig_height * $width ) / $orig_width );
+					} elseif ( ! $width && $height ) {
+						$width = round( ( $orig_width * $height ) / $orig_height );
+					} else {
+						return $attachment;
+					}
+				}
+			}
+
 			// Suffix applied to filename
 			$suffix = "{$width}x{$height}";
 
 			// Get the destination file name
 			$destination_file_name = "{$dir}/{$name}-{$suffix}.{$ext}";
-
 			// No need to resize & create a new image if it already exists
 			if ( ! file_exists( $destination_file_name ) ) {
 				//Image Resize
-				$editor = wp_get_image_editor( $file_path );
+				$editor = (isset($editor)) ? $editor : wp_get_image_editor( $file_path );
 
 				if ( is_wp_error( $editor ) ) {
 					return new WP_Error( 'wp_image_editor', 'WP Image editor can\'t resize this attachment', $attachment );
@@ -122,7 +138,8 @@ if ( ! class_exists( 'FW_Resize' ) ) {
 						$images['resizes'][ $image_size ] = addslashes( $image_path );
 					}
 				}
-				$images['resizes'][ $suffix ] = addslashes( $saved['path'] );
+				$uploads_dir = wp_upload_dir();
+				$images['resizes'][ $suffix ] = $uploads_dir['subdir'] . '/' .  $saved['file'];
 				wp_update_attachment_metadata( $attachment_info['id'], $images );
 
 			}
@@ -136,7 +153,7 @@ if ( ! class_exists( 'FW_Resize' ) ) {
 }
 
 if ( ! function_exists( 'fw_resize' ) ) {
-	function fw_resize( $url, $width, $height, $crop = false ) {
+	function fw_resize( $url, $width = false, $height = false, $crop = false ) {
 		$fw_resize = FW_Resize::getInstance();
 		$response  = $fw_resize->process( $url, $width, $height, $crop );
 
@@ -148,8 +165,10 @@ if ( ! function_exists( 'fw_delete_resized_thumbnails' ) ) {
 	function fw_delete_resized_thumbnails( $id ) {
 		$images = wp_get_attachment_metadata( $id );
 		if ( ! empty( $images['resizes'] ) ) {
+			$uploads_dir = wp_upload_dir();
 			foreach ( $images['resizes'] as $image ) {
-				@unlink( $image );
+				$file = $uploads_dir['basedir'] . '/' . $image;
+				@unlink( $file );
 			}
 		}
 	}

@@ -7,6 +7,23 @@
 			},
 			chooseGroup = function(groupId) {
 				var $choicesToReveal = elements.$choicesGroups.filter('.choice-' + groupId);
+
+				/**
+				 * The group options html was rendered in an attribute to make page load faster.
+				 * Move the html from attribute in group and init options with js.
+				 */
+				if ($choicesToReveal.attr('data-options-template')) {
+					$choicesToReveal.html(
+						$choicesToReveal.attr('data-options-template')
+					);
+
+					$choicesToReveal.removeAttr('data-options-template');
+
+					fwEvents.trigger('fw:options:init', {
+						$elements: $choicesToReveal
+					});
+				}
+
 				elements.$choicesGroups.removeClass('chosen');
 				$choicesToReveal.addClass('chosen');
 
@@ -33,6 +50,9 @@
 					elements.$pickerGroup.find('select').on('change', function() {
 						chooseGroup(this.value);
 					}).trigger('change');
+				},
+				'short-select': function() {
+					this.select();
 				},
 				'radio': function() {
 					elements.$pickerGroup.find(':radio').on('change', function() {
