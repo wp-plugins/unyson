@@ -2775,20 +2775,23 @@ a.fw-wp-link:hover {
 /* end: Animations */
 
 
-/* WP Modal */
-
-.media-modal {
-	z-index: 170001;
-}
-
-.media-modal-backdrop {
-	z-index: 170000;
-}
-
-/* end: WP Modal */
-
-
 /* modal */
+
+body > div:not(.fw-modal) > .media-modal {
+	z-index: 161001;
+}
+
+body > div:not(.fw-modal) > .media-modal-backdrop {
+	z-index: 161000;
+}
+
+body.wp-customizer > div:not(.fw-modal) > .media-modal {
+	z-index: 561001; /* bigger than .wp-customizer .media-modal */
+}
+
+body.wp-customizer > div:not(.fw-modal) > .media-modal-backdrop {
+	z-index: 561000;
+}
 
 .fw-modal .media-modal-close:focus {
 	-webkit-box-shadow: none;

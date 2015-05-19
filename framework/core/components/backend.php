@@ -13,7 +13,9 @@ final class _FW_Component_Backend {
 	/** @var FW_Form */
 	private $settings_form;
 
-	private $available_render_designs = array( 'default', 'taxonomy' );
+	private $available_render_designs = array( 'default', 'taxonomy', 'customizer' );
+
+	private $default_render_design = 'default';
 
 	/**
 	 * Store option types for registration, until they will be required
@@ -94,27 +96,19 @@ final class _FW_Component_Backend {
 
 	public function __construct() {
 		$this->print_meta_box_content_callback = create_function( '$post,$args', 'echo $args["args"];' );
-
-		{
-			$this->undefined_option_type = new FW_Option_Type_Undefined();
-
-			$this->option_types[ $this->undefined_option_type->get_type() ] = $this->undefined_option_type;
-		}
 	}
 
 	/**
 	 * @internal
 	 */
 	public function _init() {
-		if ( ! is_admin() ) {
-			return;
+		if ( is_admin() ) {
+			$this->settings_form = new FW_Form('fw_settings', array(
+				'render' => array($this, '_settings_form_render'),
+				'validate' => array($this, '_settings_form_validate'),
+				'save' => array($this, '_settings_form_save'),
+			));
 		}
-
-		$this->settings_form = new FW_Form( 'fw_settings', array(
-			'render'   => array( $this, '_settings_form_render' ),
-			'validate' => array( $this, '_settings_form_validate' ),
-			'save'     => array( $this, '_settings_form_save' ),
-		) );
 
 		$this->add_actions();
 		$this->add_filters();
@@ -127,25 +121,31 @@ final class _FW_Component_Backend {
 	}
 
 	private function add_actions() {
-		add_action( 'admin_menu', array( $this, '_action_admin_menu' ) );
-		add_action( 'add_meta_boxes', array( $this, '_action_create_post_meta_boxes' ), 10, 2 );
-		add_action( 'init', array( $this, '_action_init' ), 20 );
-		add_action( 'admin_enqueue_scripts', array( $this, '_action_admin_enqueue_scripts' ), 8 );
+		if ( is_admin() ) {
+			add_action('admin_menu', array($this, '_action_admin_menu'));
+			add_action('add_meta_boxes', array($this, '_action_create_post_meta_boxes'), 10, 2);
+			add_action('init', array($this, '_action_init'), 20);
+			add_action('admin_enqueue_scripts', array($this, '_action_admin_enqueue_scripts'), 8);
 
-		add_action( 'save_post', array( $this, '_action_save_post' ), 7, 3 );
-		add_action( 'wp_restore_post_revision', array( $this, '_action_restore_post_revision' ), 10, 2 );
-		add_action( '_wp_put_post_revision', array( $this, '_action__wp_put_post_revision' ) );
-		add_action( 'wp_creating_autosave', array( $this, '_action_trigger_wp_create_autosave') );
-
-		// render and submit options from javascript
-		{
-			add_action( 'wp_ajax_fw_backend_options_render', array( $this, '_action_ajax_options_render' ) );
-			add_action( 'wp_ajax_fw_backend_options_get_values', array( $this, '_action_ajax_options_get_values' ) );
+			// render and submit options from javascript
+			{
+				add_action('wp_ajax_fw_backend_options_render', array($this, '_action_ajax_options_render'));
+				add_action('wp_ajax_fw_backend_options_get_values', array($this, '_action_ajax_options_get_values'));
+			}
 		}
+
+		add_action('save_post', array($this, '_action_save_post'), 7, 3);
+		add_action('wp_restore_post_revision', array($this, '_action_restore_post_revision'), 10, 2);
+		add_action('_wp_put_post_revision', array($this, '_action__wp_put_post_revision'));
+		add_action('wp_creating_autosave', array($this, '_action_trigger_wp_create_autosave'));
+
+		add_action('customize_register', array($this, '_action_customize_register'), 7);
 	}
 
 	private function add_filters() {
-		add_filter( 'update_footer', array( $this, '_filter_footer_version' ), 11 );
+		if ( is_admin() ) {
+			add_filter('update_footer', array($this, '_filter_footer_version'), 11);
+		}
 	}
 
 	/**
@@ -1165,7 +1165,11 @@ final class _FW_Component_Backend {
 	 *
 	 * @return string HTML
 	 */
-	public function render_options( $options, $values = array(), $options_data = array(), $design = 'default' ) {
+	public function render_options( $options, $values = array(), $options_data = array(), $design = null ) {
+		if (empty($design)) {
+			$design = $this->default_render_design;
+		}
+
 		{
 			/**
 			 * register scripts and styles
@@ -1180,7 +1184,6 @@ final class _FW_Component_Backend {
 		}
 
 		$collected = array();
-
 		fw_collect_first_level_options( $collected, $options );
 
 		if ( empty( $collected['all'] ) ) {
@@ -1330,7 +1333,11 @@ final class _FW_Component_Backend {
 	 *
 	 * @return string
 	 */
-	public function render_option( $id, $option, $data = array(), $design = 'default' ) {
+	public function render_option( $id, $option, $data = array(), $design = null ) {
+		if (empty($design)) {
+			$design = $this->default_render_design;
+		}
+
 		/**
 		 * register scripts and styles
 		 * in case if this method is called before enqueue_scripts action
@@ -1566,50 +1573,196 @@ final class _FW_Component_Backend {
 				);
 			}
 
+			if (!$this->undefined_option_type) {
+				require_once fw_get_framework_directory('/includes/option-types/class-fw-option-type-undefined.php');
+
+				$this->undefined_option_type = new FW_Option_Type_Undefined();
+			}
+
 			return $this->undefined_option_type;
 		}
 	}
-}
-
-/**
- * This will be returned when tried to get not existing option type
- * to prevent fatal errors for cases when just one option type was typed wrong
- * or any other minor bug that has no sense to crash the whole site
- */
-final class FW_Option_Type_Undefined extends FW_Option_Type {
-	public function get_type() {
-		return '';
-	}
 
 	/**
+	 * @param WP_Customize_Manager $wp_customize
 	 * @internal
-	 * {@inheritdoc}
 	 */
-	protected function _enqueue_static( $id, $option, $data ) {
-	}
+	public function _action_customize_register($wp_customize) {
+		if (is_admin()) {
+			add_action('admin_enqueue_scripts', array($this, '_action_enqueue_customizer_static'));
+		}
 
-	/**
-	 * @internal
-	 * {@inheritdoc}
-	 */
-	protected function _render( $id, $name, $data ) {
-		return '/* ' . __( 'UNDEFINED OPTION TYPE', 'fw' ) . ' */';
-	}
-
-	/**
-	 * @internal
-	 * {@inheritdoc}
-	 */
-	protected function _get_value_from_input( $option, $input_value ) {
-		return $option['value'];
-	}
-
-	/**
-	 * @internal
-	 */
-	protected function _get_defaults() {
-		return array(
-			'value' => array()
+		$this->customizer_register_options(
+			$wp_customize,
+			fw()->theme->get_customizer_options()
 		);
+	}
+
+	/**
+	 * @internal
+	 */
+	public function _action_enqueue_customizer_static()
+	{
+		fw()->backend->enqueue_options_static(
+			fw()->theme->get_customizer_options()
+		);
+
+		wp_enqueue_script(
+			'fw-backend-customizer',
+			fw_get_framework_directory_uri( '/static/js/backend-customizer.js' ),
+			array( 'jquery', 'fw-events', 'backbone' ),
+			fw()->manifest->get_version(),
+			true
+		);
+
+		do_action('fw_admin_enqueue_scripts:customizer');
+	}
+
+	/**
+	 * @param WP_Customize_Manager $wp_customize
+	 * @param array $options
+	 * @param array $parent_data {'type':'...','id':'...'}
+	 */
+	private function customizer_register_options($wp_customize, $options, $parent_data = array()) {
+		$collected = array();
+		fw_collect_first_level_options( $collected, $options );
+
+		if (empty($collected['all'])) {
+			return;
+		}
+
+		foreach ($collected['all'] as &$opt) {
+			switch ($opt['type']) {
+				case 'tab':
+					$args = array(
+						'title' => $opt['option']['title'],
+						'description' => empty($opt['option']['desc']) ? '' : $opt['option']['desc'],
+					);
+
+					if ($parent_data) {
+						trigger_error('Not supported panel parent, type: '. $parent_data['type'], E_USER_WARNING);
+						break;
+					}
+
+					$wp_customize->add_panel(
+						$opt['id'],
+						$args
+					);
+
+					$this->customizer_register_options(
+						$wp_customize,
+						$opt['option']['options'],
+						array(
+							'type' => 'panel',
+							'id' => $opt['id']
+						)
+					);
+					break;
+				case 'box':
+					$args = array(
+						'title' => $opt['option']['title'],
+					);
+
+					if ($parent_data) {
+						if ($parent_data['type'] === 'panel') {
+							$args['panel'] = $parent_data['id'];
+						} else {
+							trigger_error('Not supported section parent, type: '. $parent_data['type'], E_USER_WARNING);
+							break;
+						}
+					}
+
+					$wp_customize->add_section($opt['id'], $args);
+
+					$this->customizer_register_options(
+						$wp_customize,
+						$opt['option']['options'],
+						array(
+							'type' => 'section',
+							'id' => $opt['id']
+						)
+					);
+					break;
+				case 'option':
+					$setting_id = FW_Option_Type::get_default_name_prefix() .'['. $opt['id'] .']';
+
+					{
+						$args = array(
+							'label'       => empty($opt['option']['label']) ? '' : $opt['option']['label'],
+							'description' => empty($opt['option']['desc']) ? '' : $opt['option']['desc'],
+							'settings'    => $setting_id,
+							'type'        => 'radio',
+							'choices'     => array(
+								'a' => 'Demo A',
+								'b' => 'Demo B',
+							),
+						);
+
+						if ($parent_data) {
+							if ($parent_data['type'] === 'section') {
+								$args['section'] = $parent_data['id'];
+							} else {
+								trigger_error('Not supported control parent, type: '. $parent_data['type'], E_USER_WARNING);
+								break;
+							}
+						} else {
+							// the option is not placed in a section, create a section automatically
+							$args['section'] = 'fw_option_auto_section_'. $opt['id'];
+							$wp_customize->add_section($args['section'], array(
+								'title' => empty($opt['option']['label']) ? fw_id_to_title($opt['id']) : $opt['option']['label'],
+							));
+						}
+					}
+
+					if (!class_exists('_FW_Customizer_Control_Option_Wrapper')) {
+						require_once fw_get_framework_directory('/includes/customizer/class--fw-customizer-control-option-wrapper.php');
+					}
+
+					$option_defaults = fw()->backend->option_type($opt['option']['type'])->get_defaults();
+
+					$wp_customize->add_setting(
+						$setting_id,
+						array(
+							'default' => $option_defaults['value'],
+
+							// added later because we can't create control first without an existing setting
+							//'sanitize_callback' => array($control, 'setting_sanitize_callback'),
+						)
+					);
+
+					$control = new _FW_Customizer_Control_Option_Wrapper(
+						$wp_customize,
+						$opt['id'],
+						$args,
+						array(
+							'fw_option' => $opt['option']
+						)
+					);
+
+					add_filter( "customize_sanitize_{$setting_id}", array($control, 'setting_sanitize_callback'), 10, 2 );
+
+					$wp_customize->add_control($control);
+					break;
+				default:
+					trigger_error('Not supported option in customizer, type: '. $opt['type'], E_USER_WARNING); // todo: uncomment
+			}
+		}
+	}
+
+	/**
+	 * For e.g. an option-type was rendered using 'customizer' design,
+	 * but inside it uses render_options() but it doesn't know the current render design
+	 * and the options will be rendered with 'default' design.
+	 * This method allows to specify the default design that will be used if not specified on render_options()
+	 * @param null|string $design
+	 * @internal
+	 */
+	public function _set_default_render_design($design = null)
+	{
+		if (empty($design) || !in_array($design, $this->available_render_designs)) {
+			$this->default_render_design = 'default';
+		} else {
+			$this->default_render_design = $design;
+		}
 	}
 }
