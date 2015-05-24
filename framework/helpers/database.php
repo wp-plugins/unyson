@@ -2,10 +2,10 @@
 	die( 'Forbidden' );
 }
 
-/** Framework Settings Options */
+/** Theme Settings Options */
 {
 	/**
-	 * Get a framework settings option value from the database
+	 * Get a theme settings option value from the database
 	 *
 	 * @param string|null $option_id Specific option id (accepts multikey). null - all options
 	 * @param null|mixed $default_value If no option found in the database, this value will be returned
@@ -19,9 +19,13 @@
 			$option_id, $default_value, $get_original_value
 		);
 
-		if ( is_null( $value ) ) {
+		if (
+			(!is_null($option_id) && is_null($value)) // a specific option_id was requested
+			||
+			(is_null($option_id) && empty($value)) // all options were requested but the db value is empty (this can happen after Reset)
+		) {
 			/**
-			 * Maybe the options was never saved or the given option id does not exists
+			 * Maybe the options was never saved or the given option id does not exist
 			 * Extract the default values from the options array and try to find there the option id
 			 */
 
@@ -51,7 +55,7 @@
 	}
 
 	/**
-	 * Set a framework settings option value in database
+	 * Set a theme settings option value in database
 	 *
 	 * @param null $option_id Specific option id (accepts multikey). null - all options
 	 * @param mixed $value
@@ -101,6 +105,8 @@
 	 * @param $value
 	 */
 	function fw_set_db_post_option( $post_id = null, $option_id = null, $value ) {
+		$post_id = intval($post_id);
+
 		if ( ! $post_id ) {
 			/** @var WP_Post $post */
 			global $post;
@@ -112,9 +118,43 @@
 			}
 		}
 
+		$sub_keys = explode('/', $option_id);
+		$base_key = array_shift($sub_keys);
+
 		$option_id = 'fw_options' . ( $option_id !== null ? '/' . $option_id : '' );
 
 		FW_WP_Meta::set( 'post', $post_id, $option_id, $value );
+
+		fw()->backend->_sync_post_separate_meta($post_id);
+
+		/**
+		 * @since 2.2.8
+		 */
+		do_action('fw_post_options_update',
+			$post_id,
+			/**
+			 * Option id
+			 * First level multi-key
+			 *
+			 * For e.g.
+			 *
+			 * if $option_id is 'hello/world/7'
+			 * this will be 'hello'
+			 */
+			$base_key,
+			/**
+			 * The remaining sub-keys
+			 *
+			 * For e.g.
+			 *
+			 * if $option_id is 'hello/world/7'
+			 * $option_id_keys will be array('world', '7')
+			 *
+			 * if $option_id is 'hello'
+			 * $option_id_keys will be array()
+			 */
+			$sub_keys
+		);
 	}
 }
 
@@ -336,5 +376,80 @@
 		$data[ $extension_name ] = $value;
 
 		return fw_update_user_meta( $user_id, 'fw_data', $data );
+	}
+}
+
+/** Customizer Framework Options */
+{
+	/**
+	 * Get a customizer framework option value from the database
+	 *
+	 * @param string|null $option_id Specific option id (accepts multikey). null - all options
+	 * @param null|mixed $default_value If no option found in the database, this value will be returned
+	 * // fixme: Maybe add this parameter? @ param null|bool $get_original_value Original value is that with no translations and other changes
+	 *
+	 * @return mixed|null
+	 */
+	function fw_get_db_customizer_option( $option_id = null, $default_value = null ) {
+		// note: this contains only changed controls/options
+		$all_db_values = get_theme_mod(FW_Option_Type::get_default_name_prefix(), array());
+
+		// extract options default values
+		{
+			$cache_key = 'fw_default_options_values/customizer';
+
+			try {
+				$all_default_values = FW_Cache::get( $cache_key );
+			} catch ( FW_Cache_Not_Found_Exception $e ) {
+				// extract the default values from options array
+				$all_default_values = fw_get_options_values_from_input(
+					fw()->theme->get_customizer_options(),
+					array()
+				);
+
+				FW_Cache::set( $cache_key, $all_default_values );
+			}
+		}
+
+		if (is_null($option_id)) {
+			return array_merge(
+				$all_default_values,
+				$all_db_values
+			);
+		} else {
+			$base_key = explode('/', $option_id); // note: option_id can be a multi-key 'a/b/c'
+			$base_key = array_shift($base_key);
+
+			$all_db_values = array_key_exists($base_key, $all_db_values)
+				? $all_db_values
+				: $all_default_values;
+
+			return fw_akg(
+				$option_id,
+				$all_db_values,
+				$default_value
+			);
+		}
+	}
+
+	/**
+	 * Set a theme customizer option value in database
+	 *
+	 * @param null $option_id Specific option id (accepts multikey). null - all options
+	 * @param mixed $value
+	 */
+	function fw_set_db_customizer_option( $option_id = null, $value ) {
+		$db_value = get_theme_mod(FW_Option_Type::get_default_name_prefix(), array());
+
+		if (is_null($option_id)) {
+			$db_value = $value;
+		} else {
+			fw_aks($option_id, $value, $db_value);
+		}
+
+		set_theme_mod(
+			FW_Option_Type::get_default_name_prefix(),
+			$db_value
+		);
 	}
 }
