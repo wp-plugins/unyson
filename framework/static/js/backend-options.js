@@ -2,6 +2,29 @@
  * Included on pages where backend options are rendered
  */
 
+var fwBackendOptions = {
+	/**
+	 * Open a tab or sub-tab
+	 */
+	openTab: function(tabId) {
+		if (!tabId) {
+			return;
+		}
+
+		var $tabLink = jQuery(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ tabId +"\']");
+
+		while ($tabLink.length) {
+			$tabLink.trigger("click");
+			$tabLink = $tabLink
+				.closest(".fw-options-tabs-wrapper").parent().closest(".fw-options-tabs-wrapper")
+				.find("> .fw-options-tabs-list > ul > li > a[href=\'#"+ $tabLink.closest(".fw-options-tab").attr("id") +"\']");
+		}
+
+		// click again on focus tab to update the input value
+		jQuery(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ tabId +"\']").trigger("click");;
+	}
+};
+
 jQuery(document).ready(function($){
 	/**
 	 * Functions
@@ -17,7 +40,7 @@ jQuery(document).ready(function($){
 			/** Remove events added by /wp-admin/js/postbox.js */
 			$boxes.find('h3, .handlediv').off('click.postboxes');
 
-			var eventNamespace = '.fw-postboxes';
+			var eventNamespace = '.fw-backend-postboxes';
 
 			// make postboxes to close/open on click
 			$boxes
@@ -72,10 +95,6 @@ jQuery(document).ready(function($){
 					$this.addClass('fw-options-tabs-first-level');
 				}
 			});
-
-			setTimeout(function(){
-				$elements.fadeTo('fast', 1);
-			}, 50);
 		}
 	});
 
@@ -83,23 +102,21 @@ jQuery(document).ready(function($){
 	fwEvents.on('fw:options:init', function (data) {
 		var $boxes = data.$elements.find('.fw-postbox:not(.fw-postbox-initialized)');
 
-		hideBoxEmptyTitles($boxes);
-
-		setTimeout(function(){
-			addPostboxToggles($boxes);
-		}, 100);
-
 		/**
 		 * leave open only first boxes
 		 */
-		data.$elements.find('.fw-postboxes > .fw-postbox:not(:first-child)').addClass('closed');
+		$boxes.filter('.fw-backend-postboxes > .fw-postbox:not(:first-child):not(.prevent-auto-close)').addClass('closed');
 
 		$boxes.addClass('fw-postbox-initialized');
 
-		setTimeout(function(){
-			// trigger on box custom event for others to do something after box initialized
-			$boxes.trigger('fw-options-box:initialized');
-		}, 100);
+		hideBoxEmptyTitles(
+			$boxes.filter('.fw-backend-postboxes > .fw-postbox')
+		);
+
+		addPostboxToggles($boxes);
+
+		// trigger on box custom event for others to do something after box initialized
+		$boxes.trigger('fw-options-box:initialized');
 	});
 
 	/** Fixes */
@@ -118,7 +135,7 @@ jQuery(document).ready(function($){
 		{
 			var $sortables = data.$elements
 				.find('.postbox:not(.fw-postbox) .fw-postbox, .fw-options-tabs-wrapper .fw-postbox')
-				.closest('.fw-postboxes')
+				.closest('.fw-backend-postboxes')
 				.not('.fw-sortable-disabled');
 
 			$sortables.each(function(){
@@ -137,6 +154,10 @@ jQuery(document).ready(function($){
 			data.$elements.find('.postbox-with-fw-options > .inside, .fw-postbox > .inside')
 				.append('<div class="fw-backend-options-last-border-hider"></div>');
 		}
+
+		hideBoxEmptyTitles(
+			data.$elements.find('.postbox-with-fw-options')
+		);
 	});
 
 	/**
@@ -151,10 +172,6 @@ jQuery(document).ready(function($){
 			$helps.addClass('initialized');
 		});
 	})();
-
-	setTimeout(function(){
-		hideBoxEmptyTitles($('.postbox-with-fw-options'));
-	}, 55);
 
 	$('#side-sortables').addClass('fw-force-xs');
 });
