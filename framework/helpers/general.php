@@ -570,12 +570,16 @@ function fw_get_variables_from_file($file_path, array $_variables) {
 /**
  * Use this function to not include files directly and to not give access to current context variables (like $this)
  * @param string $file_path
+ * @param bool $once
  * @return bool If was included or not
  */
-function fw_include_file_isolated($file_path) {
+function fw_include_file_isolated($file_path, $once = false) {
 	if (file_exists($file_path)) {
-		include $file_path;
-
+		if ( (bool) $once ) {
+			include_once $file_path;
+		} else {
+			include $file_path;
+		}
 		return true;
 	} else {
 		return false;
@@ -828,6 +832,42 @@ function fw_get_google_fonts() {
 
 		return $fonts;
 	}
+}
+
+/**
+ * @return Array with Google fonts
+ */
+function fw_get_google_fonts_v2() {
+	$saved_data = get_option( 'fw_google_fonts', false );
+
+	if (
+		false === $saved_data
+		||
+		( time() - $saved_data['last_update'] > ( time() - 7 * DAY_IN_SECONDS ) )
+	) {
+		$response = wp_remote_get( apply_filters( 'fw_googleapis_webfonts_url', 'http://google-webfonts-cache.unyson.io/v1/webfonts' ) );
+		$body     = wp_remote_retrieve_body( $response );
+
+		if (
+			200 === wp_remote_retrieve_response_code( $response )
+			&&
+			! is_wp_error( $body ) && ! empty( $body )
+		) {
+			update_option( 'fw_google_fonts', array(
+				'last_update' => time(),
+				'fonts'       => $body
+			) );
+
+			return $body;
+		} else {
+			return ( ! empty( $saved_data['fonts'] ) )
+				? $saved_data['fonts']
+				: json_encode( array( 'items' => array() )
+			);
+		}
+	}
+
+	return $saved_data['fonts'];
 }
 
 /**

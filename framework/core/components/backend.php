@@ -635,7 +635,13 @@ final class _FW_Component_Backend {
 	 * @param bool $update
 	 */
 	public function _action_save_post( $post_id, $post, $update ) {
-		if (intval(FW_Request::POST('post_ID')) == $post_id) {
+		if (
+			isset($_POST['post_ID'])
+			&&
+			intval($_POST['post_ID']) === intval($post_id)
+			&&
+			!empty($_POST[ FW_Option_Type::get_default_name_prefix() ]) // this happens on Quick Edit
+		) {
 			/**
 			 * This happens on regular post form submit
 			 * All data from $_POST belongs this $post
@@ -714,29 +720,37 @@ final class _FW_Component_Backend {
 	 **/
 	public function _action_update_autosave_options( $post_id, $post ) {
 		remove_action( 'save_post', array( $this, '_action_update_autosave_options' ) );
+
 		remove_action( 'save_post', array( $this, '_action_save_post' ), 7 );
 
-		$parent = get_post($post->post_parent);
+		do {
+			$parent = get_post($post->post_parent);
 
-		if ( ! $parent instanceof WP_Post ) {
-			return;
-		}
+			if ( ! $parent instanceof WP_Post ) {
+				break;
+			}
 
-		$current_values = fw_get_options_values_from_input(
-			fw()->theme->get_post_options($parent->post_type)
-		);
+			if (empty($_POST[ FW_Option_Type::get_default_name_prefix() ])) {
+				// this happens on Quick Edit
+				break;
+			}
 
-		fw_set_db_post_option(
-			$post->ID,
-			null,
-			array_diff_key( // remove handled values
-				$current_values,
-				$this->process_options_handlers(
-					fw()->theme->get_post_options($parent->post_type),
-					$current_values
+			$current_values = fw_get_options_values_from_input(
+				fw()->theme->get_post_options($parent->post_type)
+			);
+
+			fw_set_db_post_option(
+				$post->ID,
+				null,
+				array_diff_key( // remove handled values
+					$current_values,
+					$this->process_options_handlers(
+						fw()->theme->get_post_options($parent->post_type),
+						$current_values
+					)
 				)
-			)
-		);
+			);
+		} while(false);
 
 		add_action( 'save_post', array( $this, '_action_save_post' ), 7, 3 );
 	}
@@ -1714,32 +1728,32 @@ final class _FW_Component_Backend {
 						}
 					}
 
+					if (!class_exists('_FW_Customizer_Setting_Option')) {
+						require_once fw_get_framework_directory('/includes/customizer/class--fw-customizer-setting-option.php');
+					}
+
 					if (!class_exists('_FW_Customizer_Control_Option_Wrapper')) {
 						require_once fw_get_framework_directory('/includes/customizer/class--fw-customizer-control-option-wrapper.php');
 					}
 
 					$wp_customize->add_setting(
-						$setting_id,
-						array(
-							'default' => fw()->backend->option_type($opt['option']['type'])->get_value_from_input($opt['option'], null),
-
-							// added later because we can't create control first without an existing setting
-							//'sanitize_callback' => array($control, 'setting_sanitize_callback'),
+						new _FW_Customizer_Setting_Option(
+							$wp_customize,
+							$setting_id,
+							array(
+								'default' => fw()->backend->option_type($opt['option']['type'])->get_value_from_input($opt['option'], null),
+								'fw_option' => $opt['option'],
+							)
 						)
 					);
 
-					$control = new _FW_Customizer_Control_Option_Wrapper(
-						$wp_customize,
-						$opt['id'],
-						$args,
-						array(
-							'fw_option' => $opt['option']
+					$wp_customize->add_control(
+						new _FW_Customizer_Control_Option_Wrapper(
+							$wp_customize,
+							$opt['id'],
+							$args
 						)
 					);
-
-					add_filter( "customize_sanitize_{$setting_id}", array($control, 'setting_sanitize_callback'), 10, 2 );
-
-					$wp_customize->add_control($control);
 					break;
 				default:
 					trigger_error('Not supported option in customizer, type: '. $opt['type'], E_USER_WARNING); // todo: uncomment
