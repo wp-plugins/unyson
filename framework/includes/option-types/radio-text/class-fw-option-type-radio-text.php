@@ -85,11 +85,15 @@ class FW_Option_Type_Radio_Text extends FW_Option_Type
 	 */
 	protected function _get_value_from_input($option, $input_value)
 	{
+		if (is_null($input_value)) {
+			return $option['value'];
+		}
+
 		$option['choices'][ $this->custom_choice_key ] = '';
 
 		$selected = fw()->backend->option_type( 'radio' )->get_value_from_input( array(
 				'value' => $option['value'],
-			    'choices' => $option['choices']
+				'choices' => $option['choices']
 			),
 			$input_value['predefined']
 		);

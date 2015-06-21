@@ -18,8 +18,8 @@ abstract class FW_Option_Type
 	 * and to prevent fatal errors from new option types created by users we can't make it abstract.
 	 *
 	 * @param string $id
-	 * @param array  $option
-	 * @param array  $data
+	 * @param array $option
+	 * @param array $data
 	 * @param bool   Return true to call this method again on the next enqueue,
 	 *               if you have some functionality in it that depends on option parameters.
 	 *               By default this method is called only once for performance reasons.
@@ -31,8 +31,8 @@ abstract class FW_Option_Type
 	/**
 	 * Generate option's html from option array
 	 * @param string $id
-	 * @param array  $option
-	 * @param array  $data
+	 * @param array $option Option array merged with _get_defaults()
+	 * @param array $data {value => _get_value_from_input(), id_prefix => ..., name_prefix => ...}
 	 * @return string HTML
 	 * @internal
 	 */
@@ -41,7 +41,7 @@ abstract class FW_Option_Type
 	/**
 	 * Extract correct value for $option['value'] from input array
 	 * If input value is empty, will be returned $option['value']
-	 * @param array  $option
+	 * @param array $option Option array merged with _get_defaults()
 	 * @param array|string|null $input_value
 	 * @return string|array|int|bool Correct value
 	 * @internal
@@ -92,6 +92,20 @@ abstract class FW_Option_Type
 	final public function __construct()
 	{
 		// does nothing at the moment, but maybe in the future will do something
+	}
+
+	/**
+	 * @param FW_Access_Key $access_key
+	 * @internal
+	 * This must be called right after an instance of option type has been created
+	 * and was added to the registered array, so it is available through
+	 * fw()->backend->option_type($this->get_type())
+	 */
+	final public function _call_init($access_key)
+	{
+		if ($access_key->get_key() !== 'fw_backend') {
+			trigger_error('Method call not allowed', E_USER_ERROR);
+		}
 
 		if (method_exists($this, '_init')) {
 			$this->_init();
@@ -157,7 +171,7 @@ abstract class FW_Option_Type
 	 * Generate option's html from option array
 	 * @param  string $id
 	 * @param   array $option
-	 * @param   array $data
+	 * @param   array $data {value => $this->get_value_from_input()}
 	 * @return string HTML
 	 */
 	final public function render($id, $option, $data = array())
