@@ -21,7 +21,8 @@ fw.SITE_URI = _fw_localized.SITE_URI;
  * Useful images
  */
 fw.img = {
-	loadingSpinner: fw.SITE_URI + '/wp-admin/images/spinner.gif'
+	loadingSpinner: fw.SITE_URI +'/wp-admin/images/spinner.gif',
+	logoSvg: fw.FW_URI +'/static/img/logo.svg'
 };
 
 /**
@@ -29,8 +30,7 @@ fw.img = {
  * Like intval() in php. Returns 0 on failure, not NaN
  * @param val
  */
-fw.intval = function(val)
-{
+fw.intval = function(val) {
 	val = parseInt(val);
 
 	return !isNaN(val) ? val : 0;
@@ -225,108 +225,215 @@ fw.md5 = (function(){
 })();
 
 /**
- * Show/Hide loading on page
+ * fw.loading
+ * Show/Hide loading on the page
+ *
+ * Usage:
+ * - fw.loading.show('unique-id');
+ * - fw.loading.hide('unique-id');
  */
-fw.loading = new (function()
-{
-	var $ = jQuery;
+(function($){
+	var inst = {
+		$el: null,
+		queue: [],
+		current: null,
+		timeoutId: 0,
+		pendingHide: false,
+		$getEl: function(){
+			if (this.$el === null) { // lazy init
+				this.$el = $(
+					'<div id="fw-loading" style="display: none;">'+
+						'<table width="100%" height="100%"><tbody><tr><td valign="middle" align="center">'+
+							'<img src="'+ fw.img.logoSvg +'"'+
+								' width="30"'+
+								' class="fw-animation-rotate-reverse-180"'+
+								' alt="Loading"' +
+								' onerror="this.onerror=null; this.src=\''+ fw.FW_URI +'/static/img/logo-100.png\';"'+
+								' />'+
+						'</td></tr></tbody></table>'+
+					'</div>'
+				);
 
-	/** DOM element */
-	var $loading = $('<div></div>')
+				$(document.body).prepend(this.$el);
+			}
 
-	/** Current state */
-	var isLoading = false;
+			return this.$el;
+		},
+		removeFromQueue: function(id) {
+			this.queue = _.filter(this.queue, function (item) {
+				return item.id != id;
+			});
+		},
+		show: function(id, opts) {
+			if (typeof id != 'undefined') {
+				this.removeFromQueue(id);
 
-	/** Prevent infinite loading if some error */
-	var loadingTimeoutId = 0;
+				{
+					opts = jQuery.extend({
+						autoClose: 30000
+					}, opts || {});
 
-	/** After that time, loading will hide automaticaly */
-	var loadingTimeout = 30 * 1000;
+					opts.id = id;
 
-	/**
-	 * How many times show() was called
-	 * This prevent this situation: 2 sripts called show(), first finishes execution and calls hide(),
-	 *  but the loading needs to remain until the second script will tell it to hide()
-	 */
-	var loadingStackSize = 0;
+					/**
+					 * @type {string} pending|opening|open|closing
+					 */
+					opts.state = 'pending';
+				}
 
-	var setAutoHideTimeout = function()
-	{
-		clearTimeout(loadingTimeoutId);
+				this.queue.push(opts);
 
-		loadingTimeoutId = setTimeout(function(){
-			console.log('[Warning] Loading timeout. Auto hidding. Probably happend an error and hide cannot be done.');
+				return this.show();
+			}
 
-			that.hide();
-		}, loadingTimeout);
+			if (this.current) {
+				return false;
+			}
+
+			this.current = this.queue.shift();
+
+			if (!this.current) {
+				return false;
+			}
+
+			this.current.state = 'opening';
+
+			{
+				clearTimeout(this.timeoutId);
+
+				this.timeoutId = setTimeout(_.bind(function(){
+					if (
+						!this.current
+						||
+						this.current.state != 'opening'
+					) {
+						return;
+					}
+
+					this.current.state = 'open';
+
+					this.$getEl().removeClass('opening closing closed').addClass('open');
+
+					if (this.current.autoClose) {
+						clearTimeout(this.timeoutId);
+
+						this.timeoutId = setTimeout(_.bind(function(){
+							this.hide();
+						}, this), this.current.autoClose);
+					}
+
+					if (this.pendingHide) {
+						this.pendingHide = false;
+						this.hide();
+					}
+				}, this), 300);
+			}
+
+			this.$getEl().removeClass('open closing closed').addClass('opening').show();
+
+			return true;
+		},
+		hide: function(id) {
+			if (typeof id != 'undefined') {
+				if (
+					this.current
+					&&
+					this.current.id == id
+				) {
+					// the script below will handle this
+				} else {
+					this.removeFromQueue(id);
+					return true;
+				}
+			}
+
+			if (!this.current) {
+				return false;
+			}
+
+			var forceClose = false;
+
+			if (this.current.state == 'opening') {
+				if (this.current.id == id) {
+					/**
+					 * If the currently opening loading was requested to hide
+					 * hide it immediately, do not wait full open.
+					 * Maybe the script that started the loading was executed so quickly
+					 * so the user don't event need to see the loading.
+					 */
+					// do nothing here, just allow the close script below to be executed
+					forceClose = true;
+				} else {
+					this.pendingHide = true;
+					return true;
+				}
+			} else {
+				if (this.current.state != 'open') {
+					return false;
+				}
+			}
+
+			this.current.state = 'closing';
+
+			{
+				clearTimeout(this.timeoutId);
+
+				this.timeoutId = setTimeout(_.bind(function () {
+					if (
+						!this.current
+						||
+						this.current.state != 'closing'
+					) {
+						return;
+					}
+
+					this.current.state = 'closed';
+
+					this.$getEl().hide().removeClass('opening open closing').addClass('closed');
+
+					this.current = null;
+
+					this.show();
+				}, this), 300);
+			}
+
+			if (forceClose) {
+				this.$getEl().fadeOut('fast', _.bind(function(){
+					this.$getEl().removeClass('force-closing').addClass('closed').removeAttr('style');
+				}, this));
+
+				this.$getEl().addClass('force-closing');
+			}
+
+			this.$getEl().removeClass('closed').addClass('closing');
+		}
 	};
 
-	/** Public Methods */
-	{
-		this.show = function()
-		{
-			if (isLoading) {
-				loadingStackSize++;
-				return;
+	fw.loading = {
+		show: function(id, opts) {
+			/**
+			 * Compatibility with old version of fw.loading.show()
+			 * which didn't had the (id,opts) parameters
+			 */
+			if (typeof id == 'undefined') {
+				id = 'main';
 			}
 
-			setAutoHideTimeout();
-
-			$loading.stop(true);
-			$loading.fadeIn();
-
-			loadingStackSize++;
-
-			isLoading = true;
-		};
-
-		this.hide = function()
-		{
-			if (!isLoading) {
-				return;
+			return inst.show(id, opts);
+		},
+		hide: function(id) {
+			/**
+			 * Compatibility with old version of fw.loading.hide()
+			 * which didn't had the (id) parameter
+			 */
+			if (typeof id == 'undefined') {
+				id = 'main';
 			}
 
-			loadingStackSize--;
-
-			if (loadingStackSize < 0) {
-				loadingStackSize = 0;
-			}
-
-			if (loadingStackSize == 0) {
-				clearTimeout(loadingTimeoutId);
-
-				$loading.stop(true);
-				$loading.fadeOut('fast');
-
-				isLoading = false;
-			} else {
-				setAutoHideTimeout();
-			}
-		};
-	}
-
-	var that = this;
-
-	/** Init */
-	{
-		$loading.css({
-			'position': 'fixed',
-			'top': '0',
-			'left': '0',
-			'height': '100%',
-			'width': '100%',
-			'z-index': '9999999',
-			'display': 'none',
-			'background-image': 'url('+ fw.img.loadingSpinner +')',
-			'background-repeat': 'no-repeat',
-			'background-position': 'center center'
-		});
-
-		$(document).ready(function(){
-			$(document.body).prepend($loading);
-		});
-	}
-})();
+			return inst.hide(id);
+		}
+	};
+})(jQuery);
 
 /**
  * Capitalizes the first letter of a string.
@@ -454,25 +561,27 @@ fw.getQueryString = function(name) {
 };
 
 (function(){
-	/*
-	 * A stack-like structure to manage chains of modals
-	 * (modals that are opened one from another)
-	 */
-	var modalsStack = {
-		_stack: [],
-		push: function(modal) {
-			this._stack.push(modal);
+	var fwLoadingId = 'fw-options-modal',
+		/*
+		 * A stack-like structure to manage chains of modals
+		 * (modals that are opened one from another)
+		 */
+		modalsStack = {
+			_stack: [],
+			push: function(modal) {
+				this._stack.push(modal);
+			},
+			pop: function() {
+				return this._stack.pop();
+			},
+			peek: function() {
+				return this._stack[this._stack.length - 1];
+			},
+			getSize: function() {
+				return this._stack.length;
+			}
 		},
-		pop: function() {
-			return this._stack.pop();
-		},
-		peek: function() {
-			return this._stack[this._stack.length - 1];
-		},
-		getSize: function() {
-			return this._stack.length;
-		}
-	};
+		htmlCache = {};
 
 	var ContentView = Backbone.View.extend({
 		tagName: 'form',
@@ -504,7 +613,7 @@ fw.getQueryString = function(name) {
 		onSubmit: function(e) {
 			e.preventDefault();
 
-			fw.loading.show();
+			fw.loading.show(fwLoadingId);
 
 			jQuery.ajax({
 				url: ajaxurl,
@@ -517,7 +626,7 @@ fw.getQueryString = function(name) {
 				].join('&'),
 				dataType: 'json',
 				success: _.bind(function (response, status, xhr) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					if (!response.success) {
 						/**
@@ -535,7 +644,7 @@ fw.getQueryString = function(name) {
 					this.model.frame.modal.$el.find('.media-modal-close').trigger('click');
 				}, this),
 				error: function (xhr, status, error) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					/**
 					 * do not replace html here
@@ -811,8 +920,20 @@ fw.getQueryString = function(name) {
 
 			this.updateHtml();
 		},
+		getHtmlCacheId: function() {
+			return fw.md5(
+				JSON.stringify(this.get('options')) +'~'+ JSON.stringify(this.get('values'))
+			);
+		},
 		updateHtml: function() {
-			fw.loading.show();
+			var cacheId = this.getHtmlCacheId();
+
+			if (typeof htmlCache[cacheId] != 'undefined') {
+				this.set('html', htmlCache[cacheId]);
+				return;
+			}
+
+			fw.loading.show(fwLoadingId);
 
 			this.set('html', '');
 
@@ -832,17 +953,19 @@ fw.getQueryString = function(name) {
 				},
 				dataType: 'json',
 				success: function (response, status, xhr) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					if (!response.success) {
 						modal.set('html', 'Error: '+ response.data.message);
 						return;
 					}
 
+					htmlCache[cacheId] = response.data.html;
+
 					modal.set('html', response.data.html);
 				},
 				error: function (xhr, status, error) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					modal.set('html', status+ ': '+ error.message);
 				}
@@ -852,7 +975,6 @@ fw.getQueryString = function(name) {
 		 * Resize .fw-options-tabs-contents to fit entire window
 		 */
 		resizeTabsContent: function () {
-
 			var $content, $frame;
 
 			$content = this.frame.$el.find('.fw-options-tabs-first-level > .fw-options-tabs-contents');
@@ -876,7 +998,6 @@ fw.getQueryString = function(name) {
 			$frame.css('overflow-y', 'hidden');
 		}
 	});
-
 })();
 
 /*!
@@ -1458,7 +1579,7 @@ fw.soleModal = (function(){
 
 			if (!this.current) {
 				// nothing to hide
-				return this.runPendingMethod();;
+				return this.runPendingMethod();
 			}
 
 			this.currentMethod = 'hide';

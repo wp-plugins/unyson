@@ -36,7 +36,6 @@ jQuery(document).ready(function($){
 		 * (fork from /wp-admin/js/postbox.js)
 		 */
 		function addPostboxToggles($boxes) {
-
 			/** Remove events added by /wp-admin/js/postbox.js */
 			$boxes.find('h3, .handlediv').off('click.postboxes');
 
@@ -81,11 +80,10 @@ jQuery(document).ready(function($){
 
 	/** Init tabs */
 	fwEvents.on('fw:options:init', function (data) {
-		var $elements = data.$elements.find('.fw-options-tabs-wrapper:not(.fw-option-initialized)');
+		var $elements = data.$elements.find('.fw-options-tabs-wrapper:not(.initialized)');
 
 		if ($elements.length) {
 			$elements.tabs();
-			$elements.addClass('fw-option-initialized');
 
 			$elements.each(function(){
 				var $this = $(this);
@@ -95,19 +93,14 @@ jQuery(document).ready(function($){
 					$this.addClass('fw-options-tabs-first-level');
 				}
 			});
+
+			$elements.addClass('initialized');
 		}
 	});
 
 	/** Init boxes */
 	fwEvents.on('fw:options:init', function (data) {
-		var $boxes = data.$elements.find('.fw-postbox:not(.fw-postbox-initialized)');
-
-		/**
-		 * leave open only first boxes
-		 */
-		$boxes.filter('.fw-backend-postboxes > .fw-postbox:not(:first-child):not(.prevent-auto-close)').addClass('closed');
-
-		$boxes.addClass('fw-postbox-initialized');
+		var $boxes = data.$elements.find('.fw-postbox:not(.initialized)');
 
 		hideBoxEmptyTitles(
 			$boxes.filter('.fw-backend-postboxes > .fw-postbox')
@@ -115,8 +108,24 @@ jQuery(document).ready(function($){
 
 		addPostboxToggles($boxes);
 
+		/**
+		 * leave open only first boxes
+		 */
+		$boxes
+			.filter('.fw-backend-postboxes > .fw-postbox:not(.fw-postbox-without-name):not(:first-child):not(.prevent-auto-close)')
+			.addClass('closed');
+
+		$boxes.addClass('initialized');
+
 		// trigger on box custom event for others to do something after box initialized
 		$boxes.trigger('fw-options-box:initialized');
+	});
+
+	/** Init options */
+	fwEvents.on('fw:options:init', function (data) {
+		data.$elements.find('.fw-backend-option:not(.initialized)')
+			// do nothing, just a the initialized class to make the fadeIn css animation effect
+			.addClass('initialized');
 	});
 
 	/** Fixes */

@@ -39,6 +39,11 @@ final class _FW_Component_Backend {
 	private $static_registered = false;
 
 	/**
+	 * @var FW_Access_Key
+	 */
+	private $access_key;
+
+	/**
 	 * @internal
 	 */
 	public function _get_settings_page_slug() {
@@ -117,7 +122,15 @@ final class _FW_Component_Backend {
 	/**
 	 * @internal
 	 */
-	public function _after_components_init() {
+	public function _after_components_init() {}
+
+	private function get_access_key()
+	{
+		if (!$this->access_key) {
+			$this->access_key = new FW_Access_Key('fw_backend');
+		}
+
+		return $this->access_key;
 	}
 
 	private function add_actions() {
@@ -181,6 +194,8 @@ final class _FW_Component_Backend {
 			}
 
 			$this->option_types[ $type ] = $option_type_class;
+
+			$this->option_types[ $type ]->_call_init($this->get_access_key());
 		}
 	}
 
@@ -534,6 +549,10 @@ final class _FW_Component_Backend {
 		$values = fw_get_db_post_option( $post->ID );
 
 		foreach ( $boxes as $id => &$box ) {
+			if (empty($box['options'])) {
+				continue;
+			}
+
 			$context  = isset( $box['context'] ) ? $box['context'] : 'normal';
 			$priority = isset( $box['priority'] ) ? $box['priority'] : 'default';
 
@@ -1008,8 +1027,7 @@ final class _FW_Component_Backend {
 				 */
 				if ( ! is_bool(
 					fw()->backend->option_type( $option['type'] )->get_value_from_input( $option, true )
-				)
-				) {
+				) ) {
 					continue;
 				}
 
@@ -1232,9 +1250,13 @@ final class _FW_Component_Backend {
 					) );
 					break;
 				case 'box':
-					$html .= '<div class="fw-backend-postboxes metabox-holder">';
+					$boxes_html = '';
 
 					foreach ( $collected_type_options as $id => &$box ) {
+						if (empty($box['options'])) {
+							continue;
+						}
+
 						// prepare attributes
 						{
 							$attr = isset( $box['attr'] ) ? $box['attr'] : array();
@@ -1242,7 +1264,7 @@ final class _FW_Component_Backend {
 							unset( $attr['id'] ); // do not allow id overwrite, it is sent in first argument of render_box()
 						}
 
-						$html .= $this->render_box(
+						$boxes_html .= $this->render_box(
 							'fw-options-box-' . $id,
 							empty( $box['title'] ) ? ' ' : $box['title'],
 							$this->render_options( $box['options'], $values, $options_data ),
@@ -1253,7 +1275,13 @@ final class _FW_Component_Backend {
 					}
 					unset($box);
 
-					$html .= '</div>';
+					if (!empty($boxes_html)) {
+						$html .= '<div class="fw-backend-postboxes metabox-holder">';
+						$html .= $boxes_html;
+						$html .= '</div>';
+					}
+
+					unset($boxes_html);
 					break;
 				case 'group':
 					foreach ( $collected_type_options as $id => &$group ) {

@@ -82,28 +82,28 @@ var fwForm = {
 			e.preventDefault();
 
 			if (isBusy) {
-				console.warn('Working... Try again later.')
+				console.warn('Working... Try again later.');
 				return;
 			}
 
 			var $form = jQuery(this);
 
 			if (!$form.is('form[data-fw-form-id]')) {
-				console.error('This is not a FW_Form');
+				console.error('This is not a FW_Form', 'Selector:'. opts.selector, 'Form:', $form);
 				return;
 			}
 
 			// get submit button
 			{
-				var $submitButton = $form.find('input[type="submit"][name]:focus')
+				var $submitButton = $form.find(':submit:focus');
 
 				if (!$submitButton.length) {
 					// in case you use this solution http://stackoverflow.com/a/5721762
-					$submitButton = $form.find('input[type="submit"][name][clicked]');
+					$submitButton = $form.find('[clicked]:submit');
 				}
 
 				// make sure to remove the "clicked" attribute to prevent accidental settings reset
-				$form.find('input[type="submit"][name][clicked]').removeAttr('clicked');
+				$form.find('[clicked]:submit').removeAttr('clicked');
 			}
 
 			var elements = {

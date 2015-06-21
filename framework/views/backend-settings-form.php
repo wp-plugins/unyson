@@ -9,8 +9,33 @@
  */
 ?>
 
+<script type="text/javascript">
+	(function($){
+		var fwLoadingId = 'fw-theme-settings';
+
+		{
+			fw.loading.show(fwLoadingId);
+
+			fwEvents.one('fw:options:init', function(data){
+				fw.loading.hide(fwLoadingId);
+			});
+		}
+
+		$(function($){
+			$(document.body).on({
+				'fw:settings-form:before-html-reset': function(){
+					fw.loading.show(fwLoadingId);
+				},
+				'fw:settings-form:reset': function(){
+					fw.loading.hide(fwLoadingId);
+				}
+			});
+		});
+	})(jQuery);
+</script>
+
 <?php if ($side_tabs): ?>
-	<div class="fw-settings-form-header fw-row" style="opacity:0;">
+	<div class="fw-settings-form-header fw-row">
 		<div class="fw-col-xs-12 fw-col-sm-6">
 			<h2><?php echo fw()->theme->manifest->get_name() ?>
 				<?php if (fw()->theme->manifest->get('author')): ?>
@@ -51,10 +76,9 @@
 	</div>
 	<script type="text/javascript">
 		jQuery(function($){
-			fwEvents.on("fw:options:init", function(data){
-				// styles are loaded in footer and are applied after page load
-				data.$elements.find('.fw-settings-form-header').fadeTo('fast', 1, function(){ $(this).css('opacity', ''); });
-			}, 300);
+			fwEvents.on('fw:options:init', function(data){
+				data.$elements.find('.fw-settings-form-header:not(.initialized)').addClass('initialized');
+			});
 		});
 	</script>
 <?php endif; ?>
@@ -119,7 +143,7 @@ jQuery(function($){
 			 * so use alternative solution http://stackoverflow.com/a/5721762
 			 */
 			{
-				$(this).closest('form').find('input[type="submit"][clicked]').removeAttr('clicked');
+				$(this).closest('form').find('[clicked]:submit').removeAttr('clicked');
 				$(this).attr('clicked', '');
 			}
 
@@ -133,6 +157,23 @@ jQuery(function($){
 	});
 </script>
 <!-- end: reset warning -->
+
+<script type="text/javascript">
+	jQuery(function($){
+		var $form = $('form[data-fw-form-id="fw_settings"]:first'),
+			timeoutId = 0;
+
+		$form.on('change.fw_settings_form_delayed_change', function(){
+			clearTimeout(timeoutId);
+			/**
+			 * Run on timeout to prevent too often trigger (and cpu load) when a bunch of changes will happen at once
+			 */
+			timeoutId = setTimeout(function () {
+				$form.trigger('fw:settings-form:delayed-change');
+			}, 333);
+		});
+	});
+</script>
 
 <?php if ($ajax_submit): ?>
 <!-- ajax submit -->
@@ -247,6 +288,8 @@ jQuery(function($){
 						setTimeout(function(){
 							elements.$form.css('transition', 'opacity ease .3s');
 							elements.$form.css('opacity', '0');
+							elements.$form.trigger('fw:settings-form:before-html-reset');
+
 							setTimeout(function() {
 								var focusTabId = elements.$form.find("input[name='<?php echo esc_js($focus_tab_input_name); ?>']").val();
 								var scrollTop = jQuery(window).scrollTop();
@@ -279,6 +322,8 @@ jQuery(function($){
 										elements.$form.css('visibility', '');
 									}, 300);
 								}
+
+								elements.$form.trigger('fw:settings-form:reset');
 							}, 300);
 						}, 300);
 					}).fail(function(jqXHR, textStatus, errorThrown){
@@ -293,6 +338,7 @@ jQuery(function($){
 					});
 				} else {
 					fw.soleModal.hide('fw-options-ajax-save-loading');
+					elements.$form.trigger('fw:settings-form:saved');
 				}
 			}
 		});

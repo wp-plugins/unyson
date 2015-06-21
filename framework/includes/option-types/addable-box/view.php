@@ -21,6 +21,10 @@ unset($attr['value']);
 	</small>
 	<?php $controls_html = ob_get_clean();
 }
+
+if ($option['sortable']) {
+	$attr['class'] .= ' is-sortable';
+}
 ?>
 <div <?php echo fw_attr_to_html($attr) ?>>
 	<?php $i = 0; ?>
@@ -91,7 +95,7 @@ unset($attr['value']);
 			'data-increment' => ++$i,
 			'data-increment-placeholder' => $increment_placeholder,
 			'data-limit' => intval($option['limit']),
-		), __('Add', 'fw'));
+		), fw_htmlspecialchars($option['add-button-text']));
 		?>
 	</div>
 </div>

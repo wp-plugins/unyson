@@ -11,6 +11,10 @@ $attr = $option['attr'];
 unset($attr['name']);
 unset($attr['value']);
 
+if ($option['sortable']) {
+	$attr['class'] .= ' is-sortable';
+}
+
 ?>
 <div <?php echo fw_attr_to_html($attr) ?>>
 	<table class="fw-option-type-addable-option-options" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -87,7 +91,7 @@ unset($attr['value']);
 			'onclick' => 'return false;',
 			'data-increment' => $i,
 			'data-increment-placeholder' => $increment_placeholder,
-		), __('Add', 'fw'));
+		), fw_htmlspecialchars($option['add-button-text']));
 	?>
 	</div>
 </div>
