@@ -21,7 +21,8 @@ fw.SITE_URI = _fw_localized.SITE_URI;
  * Useful images
  */
 fw.img = {
-	loadingSpinner: fw.SITE_URI + '/wp-admin/images/spinner.gif'
+	loadingSpinner: fw.SITE_URI +'/wp-admin/images/spinner.gif',
+	logoSvg: fw.FW_URI +'/static/img/logo.svg'
 };
 
 /**
@@ -29,8 +30,7 @@ fw.img = {
  * Like intval() in php. Returns 0 on failure, not NaN
  * @param val
  */
-fw.intval = function(val)
-{
+fw.intval = function(val) {
 	val = parseInt(val);
 
 	return !isNaN(val) ? val : 0;
@@ -225,108 +225,215 @@ fw.md5 = (function(){
 })();
 
 /**
- * Show/Hide loading on page
+ * fw.loading
+ * Show/Hide loading on the page
+ *
+ * Usage:
+ * - fw.loading.show('unique-id');
+ * - fw.loading.hide('unique-id');
  */
-fw.loading = new (function()
-{
-	var $ = jQuery;
+(function($){
+	var inst = {
+		$el: null,
+		queue: [],
+		current: null,
+		timeoutId: 0,
+		pendingHide: false,
+		$getEl: function(){
+			if (this.$el === null) { // lazy init
+				this.$el = $(
+					'<div id="fw-loading" style="display: none;">'+
+						'<table width="100%" height="100%"><tbody><tr><td valign="middle" align="center">'+
+							'<img src="'+ fw.img.logoSvg +'"'+
+								' width="30"'+
+								' class="fw-animation-rotate-reverse-180"'+
+								' alt="Loading"' +
+								' onerror="this.onerror=null; this.src=\''+ fw.FW_URI +'/static/img/logo-100.png\';"'+
+								' />'+
+						'</td></tr></tbody></table>'+
+					'</div>'
+				);
 
-	/** DOM element */
-	var $loading = $('<div></div>')
+				$(document.body).prepend(this.$el);
+			}
 
-	/** Current state */
-	var isLoading = false;
+			return this.$el;
+		},
+		removeFromQueue: function(id) {
+			this.queue = _.filter(this.queue, function (item) {
+				return item.id != id;
+			});
+		},
+		show: function(id, opts) {
+			if (typeof id != 'undefined') {
+				this.removeFromQueue(id);
 
-	/** Prevent infinite loading if some error */
-	var loadingTimeoutId = 0;
+				{
+					opts = jQuery.extend({
+						autoClose: 30000
+					}, opts || {});
 
-	/** After that time, loading will hide automaticaly */
-	var loadingTimeout = 30 * 1000;
+					opts.id = id;
 
-	/**
-	 * How many times show() was called
-	 * This prevent this situation: 2 sripts called show(), first finishes execution and calls hide(),
-	 *  but the loading needs to remain until the second script will tell it to hide()
-	 */
-	var loadingStackSize = 0;
+					/**
+					 * @type {string} pending|opening|open|closing
+					 */
+					opts.state = 'pending';
+				}
 
-	var setAutoHideTimeout = function()
-	{
-		clearTimeout(loadingTimeoutId);
+				this.queue.push(opts);
 
-		loadingTimeoutId = setTimeout(function(){
-			console.log('[Warning] Loading timeout. Auto hidding. Probably happend an error and hide cannot be done.');
+				return this.show();
+			}
 
-			that.hide();
-		}, loadingTimeout);
+			if (this.current) {
+				return false;
+			}
+
+			this.current = this.queue.shift();
+
+			if (!this.current) {
+				return false;
+			}
+
+			this.current.state = 'opening';
+
+			{
+				clearTimeout(this.timeoutId);
+
+				this.timeoutId = setTimeout(_.bind(function(){
+					if (
+						!this.current
+						||
+						this.current.state != 'opening'
+					) {
+						return;
+					}
+
+					this.current.state = 'open';
+
+					this.$getEl().removeClass('opening closing closed').addClass('open');
+
+					if (this.current.autoClose) {
+						clearTimeout(this.timeoutId);
+
+						this.timeoutId = setTimeout(_.bind(function(){
+							this.hide();
+						}, this), this.current.autoClose);
+					}
+
+					if (this.pendingHide) {
+						this.pendingHide = false;
+						this.hide();
+					}
+				}, this), 300);
+			}
+
+			this.$getEl().removeClass('open closing closed').addClass('opening').show();
+
+			return true;
+		},
+		hide: function(id) {
+			if (typeof id != 'undefined') {
+				if (
+					this.current
+					&&
+					this.current.id == id
+				) {
+					// the script below will handle this
+				} else {
+					this.removeFromQueue(id);
+					return true;
+				}
+			}
+
+			if (!this.current) {
+				return false;
+			}
+
+			var forceClose = false;
+
+			if (this.current.state == 'opening') {
+				if (this.current.id == id) {
+					/**
+					 * If the currently opening loading was requested to hide
+					 * hide it immediately, do not wait full open.
+					 * Maybe the script that started the loading was executed so quickly
+					 * so the user don't event need to see the loading.
+					 */
+					// do nothing here, just allow the close script below to be executed
+					forceClose = true;
+				} else {
+					this.pendingHide = true;
+					return true;
+				}
+			} else {
+				if (this.current.state != 'open') {
+					return false;
+				}
+			}
+
+			this.current.state = 'closing';
+
+			{
+				clearTimeout(this.timeoutId);
+
+				this.timeoutId = setTimeout(_.bind(function () {
+					if (
+						!this.current
+						||
+						this.current.state != 'closing'
+					) {
+						return;
+					}
+
+					this.current.state = 'closed';
+
+					this.$getEl().hide().removeClass('opening open closing').addClass('closed');
+
+					this.current = null;
+
+					this.show();
+				}, this), 300);
+			}
+
+			if (forceClose) {
+				this.$getEl().fadeOut('fast', _.bind(function(){
+					this.$getEl().removeClass('force-closing').addClass('closed').removeAttr('style');
+				}, this));
+
+				this.$getEl().addClass('force-closing');
+			}
+
+			this.$getEl().removeClass('closed').addClass('closing');
+		}
 	};
 
-	/** Public Methods */
-	{
-		this.show = function()
-		{
-			if (isLoading) {
-				loadingStackSize++;
-				return;
+	fw.loading = {
+		show: function(id, opts) {
+			/**
+			 * Compatibility with old version of fw.loading.show()
+			 * which didn't had the (id,opts) parameters
+			 */
+			if (typeof id == 'undefined') {
+				id = 'main';
 			}
 
-			setAutoHideTimeout();
-
-			$loading.stop(true);
-			$loading.fadeIn();
-
-			loadingStackSize++;
-
-			isLoading = true;
-		};
-
-		this.hide = function()
-		{
-			if (!isLoading) {
-				return;
+			return inst.show(id, opts);
+		},
+		hide: function(id) {
+			/**
+			 * Compatibility with old version of fw.loading.hide()
+			 * which didn't had the (id) parameter
+			 */
+			if (typeof id == 'undefined') {
+				id = 'main';
 			}
 
-			loadingStackSize--;
-
-			if (loadingStackSize < 0) {
-				loadingStackSize = 0;
-			}
-
-			if (loadingStackSize == 0) {
-				clearTimeout(loadingTimeoutId);
-
-				$loading.stop(true);
-				$loading.fadeOut('fast');
-
-				isLoading = false;
-			} else {
-				setAutoHideTimeout();
-			}
-		};
-	}
-
-	var that = this;
-
-	/** Init */
-	{
-		$loading.css({
-			'position': 'fixed',
-			'top': '0',
-			'left': '0',
-			'height': '100%',
-			'width': '100%',
-			'z-index': '9999999',
-			'display': 'none',
-			'background-image': 'url('+ fw.img.loadingSpinner +')',
-			'background-repeat': 'no-repeat',
-			'background-position': 'center center'
-		});
-
-		$(document).ready(function(){
-			$(document.body).prepend($loading);
-		});
-	}
-})();
+			return inst.hide(id);
+		}
+	};
+})(jQuery);
 
 /**
  * Capitalizes the first letter of a string.
@@ -453,9 +560,8 @@ fw.getQueryString = function(name) {
 	return results == null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
 };
 
-(function() {
-
-	/*
+(function(){
+	/**
 	 * A stack-like structure to manage chains of modals
 	 * (modals that are opened one from another)
 	 */
@@ -474,6 +580,299 @@ fw.getQueryString = function(name) {
 			return this._stack.length;
 		}
 	};
+
+	/**
+	 * Generic modal
+	 *
+	 * Usage:
+	 * var modal = new fw.Modal();
+	 *
+	 * modal.on('open|close', function(){});
+	 */
+	fw.Modal = Backbone.Model.extend({
+		defaults: {
+			/* Modal title */
+			title: 'Edit Options',
+			/**
+			 * Content html
+			 * @private
+			 */
+			html: '',
+			size: 'small' // small, medium, large
+		},
+		ContentView: Backbone.View.extend({
+			tagName: 'form',
+			attributes: {
+				'onsubmit': 'return false;'
+			},
+			onSubmit: function(e) {
+				e.preventDefault();
+
+				this.model.trigger('submit', {
+					$form: this.$el
+				});
+			},
+			render: function() {
+				this.$el.html(
+					this.model.get('html')
+				);
+
+				fwEvents.trigger('fw:options:init', {$elements: this.$el});
+
+				this.trigger('render');
+
+				this.afterHtmlReplaceFixes();
+			},
+			initialize: function() {
+				this.listenTo(this.model, 'change:html', this.render);
+			},
+			/**
+			 * Call this after html replace
+			 * this.$el.html('...');
+			 * this.afterHtmlReplaceFixes();
+			 */
+			afterHtmlReplaceFixes: function() {
+				/* options fixes */
+				{
+					// hide last border
+					this.$el.prepend('<div class="fw-backend-options-last-border-hider"></div>');
+
+					// hide last border from tabs
+					this.$el.find('.fw-options-tabs-contents > .fw-inner > .fw-options-tab')
+						.append('<div class="fw-backend-options-last-border-hider"></div>');
+				}
+
+				this.$el.append('<input type="submit" class="fw-hidden hidden-submit" />');
+			}
+		}),
+		/**
+		 * Create and init this.frame
+		 */
+		initializeFrame: function() {
+			var modal = this;
+
+			var ControllerMainState = wp.media.controller.State.extend({
+				id: 'main',
+				defaults: {
+					content: 'main',
+					menu: 'default',
+					title: this.get('title')
+				},
+				initialize: function() {
+					this.listenTo(modal, 'change:title', function(){
+						this.set('title', modal.get('title'));
+					});
+				}
+			});
+
+			this.frame = new wp.media.view.MediaFrame({
+				state: 'main',
+				states: [ new ControllerMainState ]
+			});
+
+			var modal = this;
+
+			this.frame.once('ready', function(){
+				var $modalWrapper = modal.frame.modal.$el,
+					$modal        = $modalWrapper.find('.media-modal'),
+					$backdrop     = $modalWrapper.find('.media-modal-backdrop'),
+					size          = modal.get('size'),
+					stackSize     = modalsStack.getSize(),
+					$close        = $modalWrapper.find('.media-modal-close');
+
+				modal.frame.$el.addClass('hide-toolbar');
+
+				$modalWrapper.addClass('fw-modal');
+
+				if (_.indexOf(['large', 'medium', 'small'], size) !== -1) {
+					$modalWrapper.addClass('fw-modal-' + size);
+				} else {
+					$modalWrapper.addClass('fw-modal-' + modal.defaults.size);
+				}
+
+				if (stackSize) {
+					$modal.css({
+						border: (stackSize * 30) +'px solid transparent'
+					});
+				}
+
+				/**
+				 * Adjust the z-index for the new frame's backdrop and modal
+				 */
+				{
+					$backdrop.css('z-index',
+						/**
+						 * Use modal z-index because backdrop z-index in some cases can be too smaller
+						 * and when there are 2+ modals open, first modal will cover the second backdrop
+						 *
+						 * For e.g.
+						 *
+						 * - second modal | z-index: 560003
+						 * - second backdrop | z-index: 559902
+						 *
+						 * - first modal | z-index: 560002 (This will cover the above backdrop)
+						 * - first backdrop | z-index: 559901
+						 */
+						parseInt($modal.css('z-index'))
+						+ stackSize * 2 + 1
+					);
+					$modal.css('z-index',
+						parseInt($modal.css('z-index'))
+						+ stackSize * 2 + 2
+					);
+				}
+
+				/**
+				 * Show effect on close
+				 */
+				(function(){
+					var eventsNamespace = '.fwModalCloseEffect';
+					var closingTimeout  = 0;
+
+					var closeEffect = function(){
+						clearTimeout(closingTimeout);
+
+						// begin css animation
+						$modalWrapper.addClass('fw-modal-closing');
+
+						closingTimeout = setTimeout(
+							function(){
+								closingTimeout = 0;
+
+								// remove events that prevent original close
+								$close.off(eventsNamespace);
+								$backdrop.off(eventsNamespace);
+
+								// fire original close process after animation effect finished
+								$close.trigger('click');
+								$backdrop.trigger('click');
+
+								// remove animation class
+								$modalWrapper.removeClass('fw-modal-closing');
+
+								preventOriginalClose();
+							},
+							300 // css animation duration
+						);
+					};
+
+					function handleCloseClick(e) {
+						e.stopPropagation();
+						e.preventDefault();
+
+						if (closingTimeout) {
+							// do nothing if currently there is a closing delay/animation in progress
+							return;
+						}
+
+						closeEffect();
+					}
+
+					// add events that prevent original close
+					function preventOriginalClose() {
+						$close.on('click'+ eventsNamespace, handleCloseClick);
+						$backdrop.on('click'+ eventsNamespace, handleCloseClick);
+					}
+
+					preventOriginalClose();
+				})();
+			});
+
+			this.frame.on('open', function() {
+				var $modalWrapper = modal.frame.modal.$el;
+
+				$modalWrapper.addClass('fw-modal-open');
+
+				modalsStack.push($modalWrapper.find('.media-modal'));
+
+				// Resize .fw-options-tabs-contents to fit entire window
+				{
+					modal.on('change:html', modal.resizeTabsContent);
+
+					jQuery(window).on('resize.resizeTabsContent', function () {
+						modal.resizeTabsContent();
+					});
+				}
+			});
+
+			this.frame.on('close', function(){
+				// Stop tracking modal HTML and window size
+				{
+					modal.off('change:html', modal.resizeTabsContent);
+
+					jQuery(window).off('resize.resizeTabsContent');
+				}
+
+				/**
+				 * clear html
+				 * to prevent same ids in html when another modal with same options will be opened
+				 */
+				modal.set('html', '');
+
+				modal.frame.modal.$el.removeClass('fw-modal-open');
+
+				modalsStack.pop();
+			});
+
+			this.frame.on('content:create:main', function () {
+				modal.frame.content.set(
+					modal.content
+				);
+			});
+		},
+		/**
+		 * Create and init this.content
+		 */
+		initializeContent: function() {
+			this.content = new this.ContentView({
+				controller: this.frame,
+				model: this
+			});
+		},
+		initialize: function() {
+			this.initializeFrame();
+			this.initializeContent();
+		},
+		/**
+		 * @param {Object} options used for fw()->backend->render_options(json_decode(options, true))
+		 */
+		open: function() {
+			this.frame.open();
+
+			return this;
+		},
+		/**
+		 * Resize .fw-options-tabs-contents to fit entire window
+		 */
+		resizeTabsContent: function () {
+			var $content, $frame;
+
+			$content = this.frame.$el.find('.fw-options-tabs-first-level > .fw-options-tabs-contents');
+			if ($content.length == 0) {
+				return;
+			}
+
+			$frame = $content.closest('.media-frame-content');
+
+			// resize icon list to fit entire window
+			$content.css('overflow-y', 'auto').height(1000000);
+			$frame.scrollTop(1000000);
+
+			// -1 is necessary for Linux and Windows
+			// -2 is necessary for Mac OS
+			// I don't know where this numbers come from but without this adjustment
+			// vertical scroll bar appears.
+			$content.height($content.height() - $frame.scrollTop() /* - 2  */);
+
+			// This is another fix for vertical scroll bar issue
+			$frame.css('overflow-y', 'hidden');
+		}
+	});
+})();
+
+(function(){
+	var fwLoadingId = 'fw-options-modal',
+		htmlCache = {};
 
 	/**
 	 * Modal to edit backend options
@@ -507,295 +906,140 @@ fw.getQueryString = function(name) {
 	 *
 	 * modal.open();
 	 */
-	fw.OptionsModal = Backbone.Model.extend({
-		defaultSize: 'small',
-		defaults: {
-			/** Will be transformed to array with json_decode($options, true) and sent to fw()->backend->render_options() */
-			options: [
-				{'demo-text': {
-					'type': 'text',
-					'label': 'Demo Text'
-				}},
-				{'demo-textarea': {
-					'type': 'textarea',
-					'label': 'Demo Textarea'
-				}}
-			],
-			/** Values of the options {'option-id': 'option value'} , also used in fw()->backend->render_options() */
-			values: {},
-			/* Modal title */
-			title: 'Edit Options',
-			/**
-			 * Content html
-			 * @private
-			 */
-			html: ''
-		},
-		/**
-		 * Properties created in .initialize():
-		 * - {Backbone.View} contentView
-		 * - {wp.media.view.MediaFrame} frame
-		 *
-		 * @private
-		 */
-		initialize: function() {
-			var modal = this;
+	fw.OptionsModal = fw.Modal.extend({
+		ContentView: fw.Modal.prototype.ContentView.extend({
+			events: {
+				'submit': 'onSubmit'
+			},
+			onSubmit: function(e) {
+				e.preventDefault();
 
-			var ContentView = Backbone.View.extend({
-				tagName: 'form',
-				attributes: {
-					'onsubmit': 'return false;'
-				},
-				render: function() {
-					this.$el.html(
-						this.model.get('html')
-					);
+				fw.loading.show(fwLoadingId);
 
-					fwEvents.trigger('fw:options:init', {$elements: this.$el});
+				jQuery.ajax({
+					url: ajaxurl,
+					type: 'POST',
+					data: [
+						'action=fw_backend_options_get_values',
+						'options='+ encodeURIComponent(JSON.stringify(this.model.get('options'))),
+						'name_prefix=fw_edit_options_modal',
+						this.$el.serialize()
+					].join('&'),
+					dataType: 'json',
+					success: _.bind(function (response, status, xhr) {
+						fw.loading.hide(fwLoadingId);
 
-					/* options fixes */
-					{
-						// hide last border
-						this.$el.prepend('<div class="fw-backend-options-last-border-hider"></div>');
-
-						// hide last border from tabs
-						this.$el.find('.fw-options-tabs-contents > .fw-inner > .fw-options-tab')
-							.append('<div class="fw-backend-options-last-border-hider"></div>');
-					}
-				},
-				initialize: function() {
-					this.listenTo(this.model, 'change:html', this.render);
-				}
-			});
-
-			// prepare this.frame
-			{
-				var ControllerMainState = wp.media.controller.State.extend({
-					id: 'main',
-					defaults: {
-						content: 'main',
-						menu: 'default',
-						title: this.get('title')
-					},
-					initialize: function() {
-						this.listenTo(modal, 'change:title', function(){
-							this.set('title', modal.get('title'));
-						});
-					}
-				});
-
-				this.frame = new wp.media.view.MediaFrame({
-					state: 'main',
-					states: [ new ControllerMainState ]
-				});
-
-				this.frame.once('ready', function(){
-					var $modalWrapper = modal.frame.modal.$el,
-						$modal        = $modalWrapper.find('.media-modal'),
-						$backdrop     = $modalWrapper.find('.media-modal-backdrop'),
-						size          = modal.get('size'),
-						stackSize     = modalsStack.getSize(),
-						$close        = $modalWrapper.find('.media-modal-close');
-
-					$modalWrapper.addClass('fw-options-modal');
-
-					/*
-					 * if the modal has specified what size it wants to have
-					 * we obey, if not then we set a default size in case it is
-					 * the first modal in the stack, or scale it down if it isn't
-					 */
-					if (_.indexOf(['large', 'medium', 'small'], size) !== -1) {
-						$modalWrapper.addClass('fw-options-modal-' + size);
-					} else {
-						var $topModal = modalsStack.peek();
-						if ($topModal) {
-							var topModalPositions = _.map(
-								$topModal.css(['top', 'bottom', 'left', 'right']),
-								parseFloat
-							);
-							$modal.css({
-								top:    topModalPositions[0] + 30,
-								bottom: topModalPositions[1] + 30,
-								left:   topModalPositions[2] + 30,
-								right:  topModalPositions[3] + 30
-							});
-						} else {
-							$modalWrapper.addClass('fw-options-modal-' + modal.defaultSize);
-						}
-					}
-
-					/*
-					 * adjust the z-index for the new frame's backdrop and modal
-					 * (160000 is what wp sets for its modals)
-					 */
-					$backdrop.css('z-index', 160000 + (stackSize * 2 + 1));
-					$modal.css('z-index',    160000 + (stackSize * 2 + 2));
-
-					// show effect on close
-					(function(){
-						var eventsNamespace = '.fwOptionsModalCloseEffect';
-						var closingTimeout  = 0;
-
-						var closeEffect = function(){
-							clearTimeout(closingTimeout);
-
-							// begin css animation
-							$modalWrapper.addClass('fw-options-modal-closing');
-
-							closingTimeout = setTimeout(function(){
-								closingTimeout = 0;
-
-								// remove events that prevent original close
-								$close.off(eventsNamespace);
-								$backdrop.off(eventsNamespace);
-
-								// fire original close process after animation effect finished
-								$close.trigger('click');
-								$backdrop.trigger('click');
-
-								// remove animation class
-								$modalWrapper.removeClass('fw-options-modal-closing');
-
-								preventOriginalClose();
-							},
-							300 // css animation duration
-							);
-						};
-
-						function handleCloseClick(e) {
-							e.stopPropagation();
-							e.preventDefault();
-
-							if (closingTimeout) {
-								// do nothing if currently there is a closing delay/animation in progress
-								return;
-							}
-
-							closeEffect();
+						if (!response.success) {
+							/**
+							 * do not replace html here
+							 * user completed the form with data and wants to submit data
+							 * do not delete all his work
+							 */
+							alert('Error: '+ response.data.message);
+							return;
 						}
 
-						// add events that prevent original close
-						function preventOriginalClose() {
-							$close.on('click'+ eventsNamespace, handleCloseClick);
-							$backdrop.on('click'+ eventsNamespace, handleCloseClick);
-						}
+						this.model.set('values', response.data.values);
 
-						preventOriginalClose();
-					})();
-				});
+						// simulate click on close button to fire animations
+						this.model.frame.modal.$el.find('.media-modal-close').trigger('click');
+					}, this),
+					error: function (xhr, status, error) {
+						fw.loading.hide(fwLoadingId);
 
-				this.frame.on('open', function() {
-					var $modalWrapper = modal.frame.modal.$el;
-
-					$modalWrapper.addClass('fw-options-modal-open');
-
-					modalsStack.push($modalWrapper.find('.media-modal'));
-
-					// Resize .fw-options-tabs-contents to fit entire window
-					{
-						modal.on('change:html', modal.resizeTabsContent);
-
-						jQuery(window).on('resize.resizeTabsContent', function () { modal.resizeTabsContent(); });
+						/**
+						 * do not replace html here
+						 * user completed the form with data and wants to submit data
+						 * do not delete all his work
+						 */
+						alert(status +': '+ error.message);
 					}
-				});
-
-				this.frame.on('close', function(){
-					// Stop tracking modal HTML and window size
-					{
-						modal.off('change:html', modal.resizeTabsContent);
-
-						jQuery(window).off('resize.resizeTabsContent');
-					}
-
-					/**
-					 * clear html
-					 * to prevent same ids in html when another modal with same options will be opened
-					 */
-					modal.set('html', '');
-
-					modal.frame.modal.$el.removeClass('fw-options-modal-open');
-
-					modalsStack.pop();
-				});
-
-				this.contentView = new ContentView({
-					controller: this.frame,
-					model: this
-				});
-
-				this.frame.on('content:create:main', function () {
-					modal.frame.content.set(
-						modal.contentView
-					);
-
-					modal.frame.toolbar.set(
-						new wp.media.view.Toolbar({
-							controller: modal.frame,
-							items: [
-								{
-									style: 'primary',
-									text: 'Save',
-									priority: 40,
-									click: function () {
-										fw.loading.show();
-
-										jQuery.ajax({
-											url: ajaxurl,
-											type: 'POST',
-											data: [
-												'action=fw_backend_options_get_values',
-												'options='+ encodeURIComponent(JSON.stringify(modal.get('options'))),
-												'name_prefix=fw_edit_options_modal',
-												modal.contentView.$el.serialize()
-											].join('&'),
-											dataType: 'json',
-											success: function (response, status, xhr) {
-												fw.loading.hide();
-
-												if (!response.success) {
-													/**
-													 * do not replace html here
-													 * user completed the form with data and wants to submit data
-													 * do not delete all his work
-													 */
-													alert('Error: '+ response.data.message);
-													return;
-												}
-
-												modal.set('values', response.data.values);
-
-												// simulate click on close button to fire animations
-												modal.frame.modal.$el.find('.media-modal-close').trigger('click');
-											},
-											error: function (xhr, status, error) {
-												fw.loading.hide();
-
-												/**
-												 * do not replace html here
-												 * user completed the form with data and wants to submit data
-												 * do not delete all his work
-												 */
-												alert(status+ ': '+ error.message);
-											}
-										});
-									}
-								}
-							]
-						})
-					);
 				});
 			}
+		}),
+		defaults: _.extend(
+			fw.Modal.prototype.defaults,
+			{
+				/**
+				 * Will be transformed to array with json_decode($options, true)
+				 * and sent to fw()->backend->render_options()
+				 */
+				options: [
+					{'demo-text': {
+						'type': 'text',
+						'label': 'Demo Text'
+					}},
+					{'demo-textarea': {
+						'type': 'textarea',
+						'label': 'Demo Textarea'
+					}}
+				],
+				/**
+				 * Values of the options {'option-id': 'option value'}
+				 * also used in fw()->backend->render_options()
+				 */
+				values: {}
+			}
+		),
+		initializeFrame: function() {
+			fw.Modal.prototype.initializeFrame.call(this);
+
+			var modal = this;
+
+			this.frame.once('ready', function() {
+				modal.frame.$el.removeClass('hide-toolbar');
+				modal.frame.modal.$el.addClass('fw-options-modal');
+			});
+
+			this.frame.on('content:create:main', function () {
+				modal.frame.toolbar.set(
+					new wp.media.view.Toolbar({
+						controller: modal.frame,
+						items: [
+							{
+								style: 'primary',
+								text: _fw_localized.l10n.save,
+								priority: 40,
+								click: function () {
+									/**
+									 * Simulate form submit
+									 * Important: Empty input[required] must not start form submit
+									 *     and must show default browser warning popup "This field is required"
+									 */
+									modal.content.$el.find('input[type="submit"].hidden-submit').trigger('click');
+								}
+							}
+						]
+					})
+				);
+			});
 		},
 		/**
 		 * @param {Object} options used for fw()->backend->render_options(json_decode(options, true))
 		 */
 		open: function() {
-			this.frame.open();
+			fw.Modal.prototype.open.call(this);
 
 			this.updateHtml();
+
+			return this;
+		},
+		getHtmlCacheId: function() {
+			return fw.md5(
+				JSON.stringify(this.get('options')) +
+				'~' +
+				JSON.stringify(this.get('values'))
+			);
 		},
 		updateHtml: function() {
-			fw.loading.show();
+			var cacheId = this.getHtmlCacheId();
+
+			if (typeof htmlCache[cacheId] != 'undefined') {
+				this.set('html', htmlCache[cacheId]);
+				return;
+			}
+
+			fw.loading.show(fwLoadingId);
 
 			this.set('html', '');
 
@@ -815,51 +1059,25 @@ fw.getQueryString = function(name) {
 				},
 				dataType: 'json',
 				success: function (response, status, xhr) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					if (!response.success) {
 						modal.set('html', 'Error: '+ response.data.message);
 						return;
 					}
 
+					htmlCache[cacheId] = response.data.html;
+
 					modal.set('html', response.data.html);
 				},
 				error: function (xhr, status, error) {
-					fw.loading.hide();
+					fw.loading.hide(fwLoadingId);
 
 					modal.set('html', status+ ': '+ error.message);
 				}
 			});
-		},
-		/**
-		 * Resize .fw-options-tabs-contents to fit entire window
-		 */
-		resizeTabsContent: function () {
-
-			var $content, $frame;
-
-			$content = this.frame.$el.find('.fw-options-tabs-first-level > .fw-options-tabs-contents');
-			if ($content.length == 0) {
-				return;
-			}
-
-			$frame = $content.closest('.media-frame-content');
-
-			// resize icon list to fit entire window
-			$content.css('overflow-y', 'auto').height(1000000);
-			$frame.scrollTop(1000000);
-
-			// -1 is necessary for Linux and Windows
-			// -2 is necessary for Mac OS
-			// I don't know where this numbers come from but without this adjustment
-			// vertical scroll bar appears.
-			$content.height($content.height() - $frame.scrollTop() /* - 2  */);
-
-			// This is another fix for vertical scroll bar issue
-			$frame.css('overflow-y', 'hidden');
 		}
 	});
-
 })();
 
 /*!
@@ -1186,3 +1404,363 @@ fw.elementEventHasListenerInContainer = function ($element, event, $container) {
 
 	return false;
 };
+
+/**
+ * Simple modal
+ * Meant to display success/error messages
+ * Can be called multiple times,all calls will be pushed to queue and displayed one-by-one
+ *
+ * Usage:
+ *
+ * // open modal with close button and wait for user to close it
+ * fw.soleModal.show('unique-id', 'Hello World!');
+ *
+ * // open modal with close button but auto hide it after 3 seconds
+ * fw.soleModal.show('unique-id', 'Hello World!', {autoHide: 3000});
+ *
+ * fw.soleModal.hide('unique-id');
+ */
+fw.soleModal = (function(){
+	var inst = {
+		queue: [
+			/*
+			{
+				id: 'hello'
+				html: 'Hello <b>World</b>!'
+				autoHide: 0000 // auto hide timeout in ms
+				allowClose: true // useful when you make an ajax and must force the user to wait until it will finish
+				showCloseButton: true // false will hide the button, but the user will still be able to click on backdrop to close it
+				width: 350
+				height: 200
+				hidePrevious: false // just replace the modal content or hide the previous modal and open it again with new content
+				afterOpen: function(){}
+				afterClose: function(){}
+			}
+			*/
+		],
+		/** @type {Object|null} */
+		current: null,
+		animationTime: 300,
+		$modal: null,
+		backdropOpacity: 0.7, // must be the same as in .fw-modal style
+		currentMethod: '',
+		currentMethodTimeoutId: 0,
+		pendingMethod: '',
+		lazyInit: function(){
+			if (this.$modal) {
+				return false;
+			}
+
+			this.$modal = jQuery(
+				'<div class="fw-modal fw-sole-modal" style="display:none;">'+
+				'    <div class="media-modal wp-core-ui" style="width: 350px; height: 200px;">'+
+				'        <div class="media-modal-content" style="min-height: 200px;">' +
+				'            <a class="media-modal-close" href="#" onclick="return false;"><span class="media-modal-icon"></span></a>'+
+				'            <table width="100%" height="100%"><tbody><tr>'+
+				'                <td valign="middle" class="fw-sole-modal-content fw-text-center"><!-- modal content --></td>'+
+				'            </tr><tbody></table>'+
+				'        </div>'+
+				'    </div>'+
+				'    <div class="media-modal-backdrop"></div>'+
+				'</div>'
+			);
+
+			( this.$getCloseButton().add(this.$getBackdrop()) ).on('click', _.bind(function(){
+				if (this.current && !this.current.allowClose) {
+					// manual close not is allowed
+					return;
+				}
+
+				this.hide();
+			}, this));
+
+			jQuery(document.body).append(this.$modal);
+
+			return true;
+		},
+		$getBackdrop: function() {
+			this.lazyInit();
+
+			return this.$modal.find('.media-modal-backdrop:first');
+		},
+		$getCloseButton: function() {
+			this.lazyInit();
+
+			return this.$modal.find('.media-modal-close:first');
+		},
+		$getContent: function() {
+			return this.$modal.find('.fw-sole-modal-content:first');
+		},
+		setContent: function(html) {
+			this.lazyInit();
+
+			this.$getContent().html(html || '&nbsp;');
+		},
+		runPendingMethod: function() {
+			if (this.currentMethod) {
+				return false;
+			}
+
+			if (!this.pendingMethod) {
+				if (this.queue.length) {
+					// there are messages to display
+					this.pendingMethod = 'show';
+				} else {
+					return false;
+				}
+			}
+
+			var pendingMethod = this.pendingMethod;
+
+			this.pendingMethod = '';
+
+			if (pendingMethod == 'hide') {
+				this.hide();
+				return true;
+			} else if (pendingMethod == 'show') {
+				this.show();
+				return true;
+			} else {
+				console.warn('Unknown pending method:', pendingMethod);
+				this.hide();
+				return false;
+			}
+		},
+		/**
+		 * Show modal
+		 * Call without arguments to display next from queue
+		 * @param {String} [id]
+		 * @param {String} [html]
+		 * @param {Object} [opts]
+		 * @returns {Boolean}
+		 */
+		show: function (id, html, opts) {
+			if (typeof id != 'undefined') {
+				// make sure to remove this id from queue (if was added previously)
+				this.queue = _.filter(this.queue, function (item) { return item.id != id; });
+
+				{
+					opts = jQuery.extend({
+						autoHide: 0,
+						allowClose: true,
+						showCloseButton: true,
+						width: 350,
+						height: 200,
+						hidePrevious: false,
+						afterOpen: function(){},
+						afterClose: function(){}
+					}, opts || {});
+
+					// hide close button if close is not allowed
+					opts.showCloseButton = opts.showCloseButton && opts.allowClose;
+
+					opts.id = id;
+					opts.html = html;
+				}
+
+				this.queue.push(opts);
+
+				return this.show();
+			}
+
+			if (this.currentMethod) {
+				return false;
+			}
+
+			if (this.current) {
+				return false;
+			}
+
+			this.currentMethod = '';
+
+			this.current = this.queue.shift();
+
+			if (!this.current) {
+				this.hide();
+				return false;
+			}
+
+			this.currentMethod = 'show';
+
+			this.setContent(this.current.html);
+
+			this.$getCloseButton().css('display', this.current.showCloseButton ? '' : 'none');
+
+			this.$modal.removeClass('fw-modal-closing');
+			this.$modal.addClass('fw-modal-open');
+
+			this.$modal.css('display', '');
+
+			// set size
+			{
+				var $size = this.$modal.find('> .media-modal');
+
+				if (
+					$size.height() != this.current.height
+					||
+					$size.width() != this.current.width
+				) {
+					$size.animate({
+						'height': this.current.height +'px',
+						'width': this.current.width +'px'
+					}, this.animationTime);
+				}
+
+				$size = undefined;
+			}
+
+			this.currentMethodTimeoutId = setTimeout(_.bind(function() {
+				this.current.afterOpen();
+
+				this.currentMethod = '';
+
+				if (this.runPendingMethod()) {
+					return;
+				}
+
+				if (this.current.autoHide > 0) {
+					this.currentMethod = 'auto-hide';
+					this.currentMethodTimeoutId = setTimeout(_.bind(function () {
+						this.currentMethod = '';
+						this.hide();
+					}, this), this.current.autoHide);
+				}
+			}, this), this.animationTime * 2);
+		},
+		/**
+		 * @param {String} [id]
+		 * @returns {boolean}
+		 */
+		hide: function(id) {
+			if (typeof id != 'undefined') {
+				if (this.current && this.current.id == id) {
+					// this id is currently displayed, hide it
+				} else {
+					// remove id from queue
+					this.queue = _.filter(this.queue, function (item) {
+						return item.id != id;
+					});
+					return true;
+				}
+			}
+
+			if (this.currentMethod) {
+				if (this.currentMethod == 'hide') {
+					return false;
+				} else if (this.currentMethod == 'auto-hide') {
+					clearTimeout(this.currentMethodTimeoutId);
+				} else {
+					this.pendingMethod = 'hide';
+					return true;
+				}
+			}
+
+			this.currentMethod = '';
+
+			if (!this.current) {
+				// nothing to hide
+				return this.runPendingMethod();
+			}
+
+			this.currentMethod = 'hide';
+
+			if (this.queue.length && !this.queue[0].hidePrevious) {
+				// replace content
+				this.$getContent().fadeOut('fast', _.bind(function(){
+					this.current.afterClose();
+
+					this.currentMethod = '';
+					this.current = null;
+					this.show();
+					this.$getContent().fadeIn('fast');
+				}, this));
+
+				return true;
+			}
+
+			this.$modal.addClass('fw-modal-closing');
+
+			this.currentMethodTimeoutId = setTimeout(_.bind(function(){
+				this.current.afterClose();
+
+				this.currentMethod = '';
+
+				this.$modal.css('display', 'none');
+
+				this.$modal.removeClass('fw-modal-open');
+				this.$modal.removeClass('fw-modal-closing');
+
+				this.setContent('');
+
+				this.current = null;
+
+				this.runPendingMethod();
+			}, this), this.animationTime);
+		}
+	};
+
+	return {
+		show: function(id, html, opts) {
+			inst.show(id, html, opts);
+		},
+		hide: function(id){
+			inst.hide(id);
+		},
+		/**
+		 * Generate flash messages html for soleModal content
+		 */
+		renderFlashMessages: function (flashMessages) {
+			var html = [],
+				typeHtml = [],
+				typeMessageClass = '',
+				typeIconClass = '',
+				typeTitle = '';
+
+			jQuery.each(flashMessages, function(type, messages){
+				typeHtml = [];
+
+				switch (type) {
+					case 'error':
+						typeMessageClass = 'fw-text-danger';
+						typeIconClass = 'dashicons dashicons-dismiss';
+						typeTitle = _fw_localized.l10n.ah_sorry;
+						break;
+					case 'warning':
+						typeMessageClass = 'fw-text-warning';
+						typeIconClass = 'dashicons dashicons-no-alt';
+						typeTitle = _fw_localized.l10n.ah_sorry;
+						break;
+					case 'success':
+						typeMessageClass = 'fw-text-success';
+						typeIconClass = 'dashicons dashicons-star-filled';
+						typeTitle = _fw_localized.l10n.done;
+						break;
+					case 'info':
+						typeMessageClass = 'fw-text-info';
+						typeIconClass = 'dashicons dashicons-info';
+						typeTitle = _fw_localized.l10n.done;
+						break;
+					default:
+						typeMessageClass = typeIconClass = typeTitle = '';
+				}
+
+				jQuery.each(messages, function(messageId, message){
+					typeHtml.push(
+						'<li>'+
+							'<h2 class="'+ typeMessageClass +'"><span class="'+ typeIconClass +'"></span> '+ typeTitle +'</h2>'+
+							'<p class="fw-text-muted"><em>'+ message +'</em></p>'+
+						'</li>'
+					);
+				});
+
+				if (typeHtml.length) {
+					html.push(
+						'<ul>'+ typeHtml.join('</ul><ul>') +'</ul>'
+					);
+				}
+			});
+
+			return html.join('');
+		}
+	};
+})();

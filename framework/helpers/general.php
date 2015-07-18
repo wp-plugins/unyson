@@ -193,15 +193,18 @@ function fw_print($value) {
 		div.fw_print_r {
 			max-height: 500px;
 			overflow-y: scroll;
-			background: #111;
+			background: #23282d;
 			margin: 10px 30px;
 			padding: 0;
 			border: 1px solid #F5F5F5;
+			border-radius: 3px;
+			position: relative;
+			z-index: 11111;
 		}
 
 		div.fw_print_r pre {
-			color: #47EE47;
-			background: #111;
+			color: #78FF5B;
+			background: #23282d;
 			text-shadow: 1px 1px 0 #000;
 			font-family: Consolas, monospace;
 			font-size: 12px;
@@ -213,9 +216,10 @@ function fw_print($value) {
 		}
 
 		div.fw_print_r_group {
-			background: #111;
+			background: #f1f1f1;
 			margin: 10px 30px;
 			padding: 1px;
+			border-radius: 5px;
 		}
 		div.fw_print_r_group div.fw_print_r {
 			margin: 9px;
@@ -566,12 +570,16 @@ function fw_get_variables_from_file($file_path, array $_variables) {
 /**
  * Use this function to not include files directly and to not give access to current context variables (like $this)
  * @param string $file_path
+ * @param bool $once
  * @return bool If was included or not
  */
-function fw_include_file_isolated($file_path) {
+function fw_include_file_isolated($file_path, $once = false) {
 	if (file_exists($file_path)) {
-		include $file_path;
-
+		if ( (bool) $once ) {
+			include_once $file_path;
+		} else {
+			include $file_path;
+		}
 		return true;
 	} else {
 		return false;
@@ -579,65 +587,40 @@ function fw_include_file_isolated($file_path) {
 }
 
 /**
- * Extract only input options from array with: tabs, boxes, options
+ * Extract only input options (without containers)
  * @param array $options
- * @param array $_recursion_options Do not use this parameter
  * @return array {option_id => option}
  */
-function fw_extract_only_options(array $options, &$_recursion_options = array()) {
-	static $recursion = null;
+function fw_extract_only_options(array $options) {
+	$collected = array();
 
-	if ($recursion === null) {
-		$recursion = array(
-			'level'  => 0,
-			'result' => array(),
-		);
+	fw_collect_options($collected, $options);
 
-		$_recursion_options =& $options;
-	}
-
-	foreach ($_recursion_options as $id => &$option) {
-		if (isset($option['options'])) {
-			// this is container with options
-			$recursion['level']++;
-			fw_extract_only_options(array(), $option['options']);
-			$recursion['level']--;
-		} elseif (isset($option['type']) && is_string($option['type'])) {
-			$recursion['result'][$id] =& $option;
-		} elseif (is_int($id) && is_array($option)) {
-			// this is array with options
-			$recursion['level']++;
-			fw_extract_only_options(array(), $option);
-			$recursion['level']--;
-		}
-	}
-
-	if ($recursion['level'] == 0) {
-		$result =& $recursion['result'];
-
-		$recursion = null;
-
-		return $result;
-	}
+	return $collected;
 }
 
 /**
- * Collect correct options from first level on the array and group them
+ * Collect correct options from the first level of the array and group them
  * @param array $collected Will be filled with found correct options
  * @param array $options
+ *
+ * @deprecated
+ * It is deprecated since 2.4 because container types were added and there can be any type of containers
+ * but this function is hardcoded only for tab,box,group.
+ * Use fw_collect_options()
  */
 function fw_collect_first_level_options(&$collected, &$options) {
-	if (empty($options))
+	if (empty($options)) {
 		return;
+	}
 
 	if (empty($collected)) {
-		$collected['tabs']    = array();
-		$collected['boxes']   = array();
-		$collected['groups']  = array();
-
-		$collected['options'] = array();
-
-		$collected['groups_and_options'] = array();
+		$collected['tabs'] =
+		$collected['boxes'] =
+		$collected['groups'] =
+		$collected['options'] =
+		$collected['groups_and_options'] =
+		$collected['all'] = array();
 	}
 
 	foreach ($options as $option_id => &$option) {
@@ -653,20 +636,253 @@ function fw_collect_first_level_options(&$collected, &$options) {
 					break;
 				case 'group':
 					$collected['groups'][$option_id] =& $option;
-
 					$collected['groups_and_options'][$option_id] =& $option;
 					break;
 				default:
 					trigger_error('Invalid option container type: '. $option['type'], E_USER_WARNING);
+					continue 2;
 			}
-		} elseif (is_int($option_id) && is_array($option)) {
-			// array with options
+
+			$collected['all'][ $option['type'] .':~:'. $option_id ] = array(
+				'type'   => $option['type'],
+				'id'     => $option_id,
+				'option' => &$option,
+			);
+		} elseif (
+			is_int($option_id)
+			&&
+			is_array($option)
+			&&
+			/**
+			 * make sure the array key was generated automatically
+			 * and it's not an associative array with numeric keys created like this: $options[1] = array();
+			 */
+			isset($options[0])
+		) {
+			/**
+			 * Array "without key" containing options.
+			 *
+			 * This happens when options are returned into array from a function:
+			 * $options = array(
+			 *  'foo' => array('type' => 'text'),
+			 *  'bar' => array('type' => 'textarea'),
+			 *
+			 *  // this is our case
+			 *  // go inside this array and extract the options as they are on the same array level
+			 *  array(
+			 *      'hello' => array('type' => 'text'),
+			 *  ),
+			 *
+			 *  // there can be any nested arrays
+			 *  array(
+			 *      array(
+			 *          array(
+			 *              'h1' => array('type' => 'text'),
+			 *          ),
+			 *      ),
+			 *  ),
+			 * )
+			 */
 			fw_collect_first_level_options($collected, $option);
 		} elseif (isset($option['type'])) {
 			// simple option, last possible level in options array
 			$collected['options'][$option_id] =& $option;
-
 			$collected['groups_and_options'][$option_id] =& $option;
+
+			$collected['all'][ 'option' .':~:'. $option_id ] = array(
+				'type'   => 'option',
+				'id'     => $option_id,
+				'option' => &$option,
+			);
+		} else {
+			trigger_error('Invalid option: '. $option_id, E_USER_WARNING);
+		}
+	}
+	unset($option);
+}
+
+/**
+ * @param array $result
+ * @param array $options
+ * @param array $settings
+ * @param array $_recursion_data (private) for internal use
+ */
+function fw_collect_options(&$result, &$options, $settings = array(), $_recursion_data = array()) {
+	static $default_settings = array(
+		/**
+		 * @type bool Wrap the result/collected options in arrays will useful info
+		 *
+		 * If true:
+		 * $result = array(
+		 *   '(container|option):{id}' => array(
+		 *      'id' => '{id}',
+		 *      'level' => int, // from which nested level this option is
+		 *      'group' => 'container|option',
+		 *      'option' => array(...),
+		 *   )
+		 * )
+		 *
+		 * If false:
+		 * $result = array(
+		 *   '{id}' => array(...),
+		 *   // Warning: There can be options and containers with the same id (array key will be replaced)
+		 * )
+		 */
+		'info_wrapper' => false,
+		/**
+		 * @type int Nested options level limit. For e.g. use 1 to collect only first level. 0 is for unlimited.
+		 */
+		'limit_level' => 0,
+		/**
+		 * @type false|array('option-type', ...) Empty array will skip all types
+		 */
+		'limit_option_types' => false,
+		/**
+		 * @type false|array('container-type', ...) Empty array will skip all types
+		 */
+		'limit_container_types' => array(),
+		/**
+		 * @type int Limit the number of options that will be collected
+		 */
+		'limit' => 0,
+	);
+
+	static $access_key = null;
+
+	if (is_null($access_key)) {
+		$access_key = new FW_Access_Key('fw_collect_options');
+	}
+
+	if (empty($options)) {
+		return;
+	}
+
+	$settings = array_merge($default_settings, $settings);
+
+	if (empty($_recursion_data)) {
+		$_recursion_data = array(
+			'level' => 1,
+			'access_key' => $access_key,
+			// todo: maybe add 'parent' => array('id' => '{id}', 'type' => 'container|option') ?
+		);
+	} elseif (
+		!isset($_recursion_data['access_key'])
+		||
+		!($_recursion_data['access_key'] instanceof FW_Access_Key)
+		||
+		!($_recursion_data['access_key']->get_key() === 'fw_collect_options')
+	) {
+		trigger_error('Call not allowed', E_USER_ERROR);
+	}
+
+	if (
+		$settings['limit_level']
+		&&
+		$_recursion_data['level'] > $settings['limit_level']
+	) {
+		return;
+	}
+
+	foreach ($options as $option_id => &$option) {
+		if (isset($option['options'])) { // this is a container
+			do {
+				if (
+					is_array($settings['limit_container_types'])
+					&&
+					!in_array($option['type'], $settings['limit_container_types'])
+				) {
+					break;
+				}
+
+				if (
+					$settings['limit']
+					&&
+					count($result) >= $settings['limit']
+				) {
+					return;
+				}
+
+				if ($settings['info_wrapper']) {
+					$result['container:'. $option_id] = array(
+						'group'  => 'container',
+						'id'     => $option_id,
+						'option' => &$option,
+						'level'  => $_recursion_data['level'],
+					);
+				} else {
+					$result[$option_id] = &$option;
+				}
+			} while(false);
+
+			fw_collect_options(
+				$result,
+				$option['options'],
+				$settings,
+				array_merge($_recursion_data, array('level' => $_recursion_data['level'] + 1))
+			);
+		} elseif (
+			is_int($option_id)
+			&&
+			is_array($option)
+			&&
+			/**
+			 * make sure the array key was generated automatically
+			 * and it's not an associative array with numeric keys created like this: $options[1] = array();
+			 */
+			isset($options[0])
+		) {
+			/**
+			 * Array "without key" containing options.
+			 *
+			 * This happens when options are returned into array from a function:
+			 * $options = array(
+			 *  'foo' => array('type' => 'text'),
+			 *  'bar' => array('type' => 'textarea'),
+			 *
+			 *  // this is our case
+			 *  // go inside this array and extract the options as they are on the same array level
+			 *  array(
+			 *      'hello' => array('type' => 'text'),
+			 *  ),
+			 *
+			 *  // there can be any nested arrays
+			 *  array(
+			 *      array(
+			 *          array(
+			 *              'h1' => array('type' => 'text'),
+			 *          ),
+			 *      ),
+			 *  ),
+			 * )
+			 */
+			fw_collect_options($result, $option, $settings, $_recursion_data);
+		} elseif (isset($option['type'])) { // option
+			if (
+				is_array($settings['limit_option_types'])
+				&&
+				!in_array($option['type'], $settings['limit_option_types'])
+			) {
+				continue;
+			}
+
+			if (
+				$settings['limit']
+				&&
+				count($result) >= $settings['limit']
+			) {
+				return;
+			}
+
+			if ($settings['info_wrapper']) {
+				$result['option:'. $option_id] = array(
+					'group'  => 'option',
+					'id'     => $option_id,
+					'option' => &$option,
+					'level'  => $_recursion_data['level'],
+				);
+			} else {
+				$result[$option_id] = &$option;
+			}
 		} else {
 			trigger_error('Invalid option: '. $option_id, E_USER_WARNING);
 		}
@@ -692,6 +908,11 @@ function fw_get_options_values_from_input(array $options, $input_array = null) {
 			$option,
 			isset($input_array[$id]) ? $input_array[$id] : null
 		);
+
+		if (is_null($values[$id])) {
+			// do not save null values
+			unset($values[$id]);
+		}
 	}
 
 	return $values;
@@ -722,12 +943,8 @@ function fw_prepare_option_value($value) {
 		return $value;
 	}
 
-	if (function_exists('qtrans_use_current_language_if_not_found_use_default_language')) {
-		if (is_array($value)) {
-			array_walk_recursive($value, 'qtrans_use_current_language_if_not_found_use_default_language');
-		} else {
-			$value = qtrans_use_current_language_if_not_found_use_default_language($value);
-		}
+	if (function_exists('qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage')) {
+		$value = qtrans_useCurrentLanguageIfNotFoundUseDefaultLanguage($value);
 	}
 
 	return $value;
@@ -736,8 +953,17 @@ function fw_prepare_option_value($value) {
 /**
  * This function is used in 'save_post' action
  *
+ * Used to check if current post save is a regular "Save" button press
+ * not a revision, auto-save or something else
+ *
  * @param $post_id
  * @return bool
+ *
+ * @deprecated
+ * save_post action happens also happens on Preview, Revision, Auto-save Restore, ...
+ * the verifications in this function simplifies too much the save process,
+ * the developers should study and understand better how it works
+ * and handle different save cases in their scripts using wp functions
  */
 function fw_is_real_post_save($post_id) {
 	return !(
@@ -771,28 +997,78 @@ function fw_get_google_fonts() {
 }
 
 /**
+ * @return Array with Google fonts
+ */
+function fw_get_google_fonts_v2() {
+	$saved_data = get_option( 'fw_google_fonts', false );
+
+	if (
+		false === $saved_data
+		||
+		( time() - $saved_data['last_update'] > ( time() - 7 * DAY_IN_SECONDS ) )
+	) {
+		$response = wp_remote_get( apply_filters( 'fw_googleapis_webfonts_url', 'http://google-webfonts-cache.unyson.io/v1/webfonts' ) );
+		$body     = wp_remote_retrieve_body( $response );
+
+		if (
+			200 === wp_remote_retrieve_response_code( $response )
+			&&
+			! is_wp_error( $body ) && ! empty( $body )
+		) {
+			update_option( 'fw_google_fonts', array(
+				'last_update' => time(),
+				'fonts'       => $body
+			) );
+
+			return $body;
+		} else {
+			return ( ! empty( $saved_data['fonts'] ) )
+				? $saved_data['fonts']
+				: json_encode( array( 'items' => array() )
+			);
+		}
+	}
+
+	return $saved_data['fonts'];
+}
+
+/**
  * @return string Current url
  */
 function fw_current_url() {
-	static $cache = null;
-	if ($cache !== null)
-		return $cache;
+	static $url = null;
 
-	$pageURL = 'http';
+	if ($url === null) {
+		$url = 'http://';
 
-	if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on')
-		$pageURL .= 's';
+		if ($_SERVER['SERVER_NAME'] === '_') { // https://github.com/ThemeFuse/Unyson/issues/126
+			$url .= $_SERVER['HTTP_HOST'];
+		} else {
+			$url .= $_SERVER['SERVER_NAME'];
+		}
 
-	$pageURL .= '://';
+		if (!in_array(intval($_SERVER['SERVER_PORT']), array(80, 443))) {
+			$url .= ':'. $_SERVER['SERVER_PORT'];
+		}
 
-	if ($_SERVER['SERVER_PORT'] != '80')
-		$pageURL .= $_SERVER['SERVER_NAME'].':'.$_SERVER['SERVER_PORT'].$_SERVER['REQUEST_URI'];
-	else
-		$pageURL .= $_SERVER['SERVER_NAME'].$_SERVER['REQUEST_URI'];
+		$url .= $_SERVER['REQUEST_URI'];
 
-	$cache = $pageURL;
+		$url = set_url_scheme($url); // https fix
 
-	return $cache;
+		if ( is_multisite() ) {
+			if ( defined( 'SUBDOMAIN_INSTALL' ) && SUBDOMAIN_INSTALL ) {
+				$site_url = parse_url($url);
+
+				if ( isset($site_url['query']) ) {
+					$url = home_url($site_url['path'] . '?' . $site_url['query']);
+				} else {
+					$url = home_url($site_url['path']);
+				}
+			}
+		}
+	}
+
+	return $url;
 }
 
 function fw_is_valid_domain_name($domain_name) {
@@ -892,7 +1168,11 @@ function fw_human_time($seconds)
 }
 
 function fw_strlen($string) {
-	return mb_strlen($string, 'UTF-8');
+	if (function_exists('mb_strlen')) {
+		return mb_strlen($string, 'UTF-8');
+	} else {
+		return strlen($string);
+	}
 }
 
 /**
@@ -1021,7 +1301,11 @@ function fw_secure_rand($length)
  */
 function fw_id_to_title($id) {
 	// mb_ucfirst()
-	$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	if (function_exists('mb_strtoupper') && function_exists('mb_substr') && function_exists('mb_strlen')) {
+		$id = mb_strtoupper(mb_substr($id, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($id, 1, mb_strlen($id, 'UTF-8'), 'UTF-8');
+	} else {
+		$id = strtoupper(substr($id, 0, 1)) . substr($id, 1, strlen($id));
+	}
 
 	return str_replace(array('_', '-'), ' ', $id);
 }
@@ -1033,4 +1317,131 @@ function fw_id_to_title($id) {
  */
 function fw_ext($extension_name) {
 	return fw()->extensions->get($extension_name);
+}
+
+/*
+ * Return URI without scheme
+ */
+function fw_get_url_without_scheme( $url ) {
+	return preg_replace( '/^[^:]+:\/\//', '//', $url );
+}
+
+/**
+ * Try to find file path by its uri and read the file contents
+ * @param string $file_uri
+ * @return bool|string false or string - the file contents
+ */
+function fw_read_file_by_uri($file_uri) {
+	static $base = null;
+
+	if ($base === null) {
+		$base = array();
+		$base['dir'] = WP_CONTENT_DIR;
+		$base['uri'] = ltrim(content_url(), '/');
+		$base['uri_prefix_regex'] = '/^'. preg_quote($base['uri'], '/') .'/';
+	}
+
+	$file_rel_path = preg_replace($base['uri_prefix_regex'], '', $file_uri);
+
+	if ($base['uri'] === $file_rel_path) {
+		// the file is not inside base dir
+		return false;
+	}
+
+	$file_path = $base['dir'] .'/'. $file_rel_path;
+
+	if (!file_exists($file_path)) {
+		return false;
+	}
+
+	return file_get_contents($file_path);
+}
+
+/**
+ * Make stylesheet contents (portable) independent of directory location
+ * For e.g. replace relative paths 'url(img/bg.png)' with full paths 'url(http://site.com/assets/img/bg.png)'
+ *
+ * @param string $href 'http://.../style.css'
+ * @param null|string $contents If not specified, will try to read from $href
+ * @return bool|string false - on failure; string - stylesheet contents
+ */
+function fw_make_stylesheet_portable($href, $contents = null) {
+	if (is_null($contents)) {
+		$contents = fw_read_file_by_uri($href);
+
+		if ($contents === false) {
+			return false;
+		}
+	}
+
+	$dir_uri = dirname($href);
+
+	/**
+	 * Replace relative 'url(img/bg.png)'
+	 * with full 'url(http://site.com/assets/img/bg.png)'
+	 *
+	 * Do not touch if url starts with:
+	 * - 'https://'
+	 * - 'http://'
+	 * - '/' (also matches '//')
+	 * - '#' (for css property: "behavior: url(#behaveBinObject)")
+	 * - 'data:'
+	 */
+	$contents = preg_replace(
+		'/url\s*\((?!\s*[\'"]?(?:\/|data\:|\#|(?:https?:)?\/\/))\s*([\'"])?/',
+		'url($1'. $dir_uri .'/',
+		$contents
+	);
+
+	return $contents;
+}
+
+/**
+ * Return all images sizes register by add_image_size() merged with
+ * WordPress default image sizes.
+ * @link https://codex.wordpress.org/Function_Reference/get_intermediate_image_sizes
+ * @param string $size
+ *
+ * @return array|bool
+ */
+function fw_get_image_sizes( $size = '' ) {
+
+	global $_wp_additional_image_sizes;
+
+	$sizes = array();
+	$get_intermediate_image_sizes = get_intermediate_image_sizes();
+
+	// Create the full array with sizes and crop info
+	foreach( $get_intermediate_image_sizes as $_size ) {
+
+		if ( in_array( $_size, array( 'thumbnail', 'medium', 'large' ) ) ) {
+
+			$sizes[ $_size ]['width'] = get_option( $_size . '_size_w' );
+			$sizes[ $_size ]['height'] = get_option( $_size . '_size_h' );
+			$sizes[ $_size ]['crop'] = (bool) get_option( $_size . '_crop' );
+
+		} elseif ( isset( $_wp_additional_image_sizes[ $_size ] ) ) {
+
+			$sizes[ $_size ] = array(
+				'width' => $_wp_additional_image_sizes[ $_size ]['width'],
+				'height' => $_wp_additional_image_sizes[ $_size ]['height'],
+				'crop' =>  $_wp_additional_image_sizes[ $_size ]['crop']
+			);
+
+		}
+
+	}
+
+	// Get only 1 size if found
+	if ( $size ) {
+
+		if( isset( $sizes[ $size ] ) ) {
+			return $sizes[ $size ];
+		} else {
+			return false;
+		}
+
+	}
+
+	return $sizes;
 }

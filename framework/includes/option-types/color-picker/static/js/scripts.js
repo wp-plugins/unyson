@@ -1,9 +1,11 @@
-jQuery(document).ready(function($){
-	$(document.body).click(function (e) {
-		if (!$(e.target).is('.fw-option-type-color-picker, .iris-picker, .iris-picker-inner, .iris-palette')) {
-			$('.fw-option-type-color-picker.initialized').iris('hide');
-		}
-	});
+/*global jQuery */
+(function($){
+	$(document).ready(function(){
+		$(document.body).click(function (e) {
+			if (!$(e.target).is('.fw-option-type-color-picker, .iris-picker, .iris-picker-inner, .iris-palette')) {
+				$('.fw-option-type-color-picker.initialized').iris('hide');
+			}
+		});
 
 	/**
 	 * Return true if color is dark
@@ -27,7 +29,8 @@ jQuery(document).ready(function($){
 
 	fwEvents.on('fw:options:init', function (data) {
 		data.$elements.find('input.fw-option-type-color-picker:not(.initialized)').each(function(){
-			var $input = $(this);
+			var $input = $(this),
+				changeTimeoutId = 0;
 
 			$input.iris({
 				hide: false,
@@ -44,6 +47,14 @@ jQuery(document).ready(function($){
 						event   : event,
 						ui      : ui
 					});
+
+					/**
+					 * If we trigger the 'change' right here, that will block the picker (I don't know why)
+					 */
+					clearTimeout(changeTimeoutId);
+					changeTimeoutId = setTimeout(function(){
+						$input.trigger('change');
+					}, 12);
 				},
 				palettes: true
 			});
@@ -69,13 +80,22 @@ jQuery(document).ready(function($){
 			$input.addClass('initialized');
 		});
 
-		jQuery('.fw-inner').on('click', '.fw-option-type-color-picker', function () {
-			$('.fw-option-type-color-picker.initialized').iris('hide');
+			$('.fw-inner').on('click', '.fw-option-type-color-picker', function () {
+				var $this = $(this);
+				$('.fw-option-type-color-picker.initialized').iris('hide');
 
-			$(this).iris('show');
+				$this.iris('show');
 
-			return false;
+				var widthParent = $this.closest('.fw-backend-option').outerWidth(),
+					widthPiker = $this.next('.iris-picker').outerWidth(),
+					offsetPiker = ($this.next('.iris-picker').offset().left - $this.closest('.fw-backend-option').offset().left) + widthPiker;
+
+				if (offsetPiker > widthParent) {
+					$this.next('.iris-picker').css('right', '0');
+				}
+				return false;
+			});
+
 		});
-
 	});
-});
+})(jQuery);

@@ -1,8 +1,19 @@
-(function ($) {
+(function ($, fwEvents) {
 	var defaults = {
 		onChange: function (data) {
-			data.input.next('.fw-irs-range-slider-hidden-input').val(data.from + ';' + data.to);
-		}
+			var from = (data.from_value) ? data.from_value : data.from;
+			var to = (data.to_value) ? data.to_value : data.to;
+			data.input.next('.fw-irs-range-slider-hidden-input').val(from + ';' + to);
+			data.input.closest('.fw-option-type-range-slider').find('span.irs-slider.from').html(from);
+			data.input.closest('.fw-option-type-range-slider').find('span.irs-slider.to').html(to);
+		},
+		onStart: function (data) {
+			var from = (data.from_value) ? data.from_value : data.from;
+			var to = (data.to_value) ? data.to_value : data.to;
+			data.input.closest('.fw-option-type-range-slider').find('span.irs-slider.from').html(from);
+			data.input.closest('.fw-option-type-range-slider').find('span.irs-slider.to').html(to);
+		},
+		grid: true
 	};
 
 	fwEvents.on('fw:options:init', function (data) {
@@ -12,4 +23,4 @@
 		});
 	});
 
-})(jQuery);
+})(jQuery, fwEvents);

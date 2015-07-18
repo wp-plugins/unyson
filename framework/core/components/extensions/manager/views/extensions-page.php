@@ -25,6 +25,7 @@ foreach ($lists['active'] as $name => &$data) {
 
 	$display_active_extensions[$name] = &$data;
 }
+unset($data);
 ?>
 <?php if (empty($display_active_extensions)): ?>
 	<div class="fw-extensions-no-active">
@@ -48,6 +49,7 @@ foreach ($lists['active'] as $name => &$data) {
 
 			$displayed[$name] = true;
 		}
+		unset($data);
 		?>
 	</div>
 <?php endif; ?>
@@ -62,7 +64,7 @@ foreach ($lists['active'] as $name => &$data) {
 			$theme_extensions = array();
 
 			foreach ($lists['disabled'] as $name => &$data) {
-				if ($data['source'] == 'framework') {
+				if (!$data['is']['theme']) {
 					continue;
 				}
 
@@ -71,8 +73,9 @@ foreach ($lists['active'] as $name => &$data) {
 					'description' => fw_akg('description', $data['manifest'], '')
 				);
 			}
+			unset($data);
 
-			foreach (($theme_extensions + $lists['supported']) as $name => $data) {
+			foreach ($theme_extensions + $lists['supported'] as $name => $data) {
 				if (isset($displayed[$name])) {
 					continue;
 				} elseif (isset($lists['installed'][$name])) {
@@ -127,6 +130,7 @@ foreach ($lists['active'] as $name => &$data) {
 
 			$displayed[$name] = $something_displayed = true;
 		}
+		unset($data);
 
 		if ($can_install) {
 			foreach ( $lists['available'] as $name => &$data ) {
@@ -161,14 +165,54 @@ foreach ($lists['active'] as $name => &$data) {
 
 				$something_displayed = true;
 			}
+			unset($data);
 		}
 		?>
 	</div>
-	<?php if (!$something_displayed): ?>
-	<script type="text/javascript">
-		jQuery(function($){
-			$('#fw-extensions-list-available').remove();
-		});
-	</script>
+
+	<?php if ($something_displayed && apply_filters('fw_extensions_page_show_other_extensions', true)): ?>
+		<!-- show/hide not compatible extensions -->
+		<p class="fw-text-center toggle-not-compat-ext-btn-wrapper"><?php
+			echo fw_html_tag(
+				'a',
+				array(
+					'href' => '#',
+					'onclick' => 'return false;',
+					'class' => 'button toggle-not-compat-ext-btn',
+					'style' => 'box-shadow:none;'
+				),
+				'<span class="the-show-text">'. __('Show other extensions', 'fw') .'</span>'.
+				'<span class="the-hide-text fw-hidden">'. __('Hide other extensions', 'fw') .'</span>'
+			);
+			?></p>
+		<script type="text/javascript">
+			jQuery(function($){
+				if (
+					!$('.fw-extensions-list .fw-extensions-list-item.not-compatible').length
+					||
+					<?php echo empty($lists['supported']) ? 'true' : 'false' ?>
+				) {
+					// disable the show/hide feature
+					$('#fw-extensions-list-wrapper .toggle-not-compat-ext-btn-wrapper').addClass('fw-hidden');
+				} else {
+					$('#fw-extensions-list-wrapper .fw-extensions-list .fw-extensions-list-item.not-compatible').fadeOut('fast');
+
+					$('#fw-extensions-list-wrapper .toggle-not-compat-ext-btn-wrapper').on('click', function(){
+						$('#fw-extensions-list-wrapper .fw-extensions-list .fw-extensions-list-item.not-compatible')[
+							$(this).find('.the-hide-text').hasClass('fw-hidden') ? 'fadeIn' : 'fadeOut'
+							]();
+
+						$(this).find('.the-show-text, .the-hide-text').toggleClass('fw-hidden');
+					});
+				}
+			});
+		</script>
+		<!-- end: show/hide not compatible extensions -->
+	<?php else: ?>
+		<script type="text/javascript">
+			jQuery(function($){
+				$('#fw-extensions-list-available').remove();
+			});
+		</script>
 	<?php endif; ?>
 </div>
