@@ -36,6 +36,25 @@ final class _FW_Component_Backend {
 	 */
 	private $undefined_option_type;
 
+	/**
+	 * Store container types for registration, until they will be required
+	 * @var array|false
+	 *      array Can have some pending container types in it
+	 *      false Container types already requested and was registered, so do not use pending anymore
+	 */
+	private $container_types_pending_registration = array();
+
+	/**
+	 * Contains all container types
+	 * @var FW_Container_Type[]
+	 */
+	private $container_types = array();
+
+	/**
+	 * @var FW_Container_Type_Undefined
+	 */
+	private $undefined_container_type;
+
 	private $static_registered = false;
 
 	/**
@@ -157,6 +176,7 @@ final class _FW_Component_Backend {
 
 	private function add_filters() {
 		if ( is_admin() ) {
+			add_filter('admin_footer_text', array($this, '_filter_admin_footer_text'), 11);
 			add_filter('update_footer', array($this, '_filter_footer_version'), 11);
 		}
 	}
@@ -177,7 +197,6 @@ final class _FW_Component_Backend {
 
 			if ( ! is_subclass_of( $option_type_class, 'FW_Option_Type' ) ) {
 				trigger_error( 'Invalid option type class ' . get_class( $option_type_class ), E_USER_WARNING );
-
 				return;
 			}
 
@@ -189,13 +208,48 @@ final class _FW_Component_Backend {
 
 			if ( isset( $this->option_types[ $type ] ) ) {
 				trigger_error( 'Option type "' . $type . '" already registered', E_USER_WARNING );
-
 				return;
 			}
 
 			$this->option_types[ $type ] = $option_type_class;
 
 			$this->option_types[ $type ]->_call_init($this->get_access_key());
+		}
+	}
+
+	/**
+	 * @param string|FW_Container_Type $container_type_class
+	 *
+	 * @internal
+	 */
+	private function register_container_type( $container_type_class ) {
+		if ( is_array( $this->container_types_pending_registration ) ) {
+			// Container types never requested. Continue adding to pending
+			$this->container_types_pending_registration[] = $container_type_class;
+		} else {
+			if ( is_string( $container_type_class ) ) {
+				$container_type_class = new $container_type_class;
+			}
+
+			if ( ! is_subclass_of( $container_type_class, 'FW_Container_Type' ) ) {
+				trigger_error( 'Invalid container type class ' . get_class( $container_type_class ), E_USER_WARNING );
+				return;
+			}
+
+			/**
+			 * @var FW_Container_Type $container_type_class
+			 */
+
+			$type = $container_type_class->get_type();
+
+			if ( isset( $this->container_types[ $type ] ) ) {
+				trigger_error( 'Container type "' . $type . '" already registered', E_USER_WARNING );
+				return;
+			}
+
+			$this->container_types[ $type ] = $container_type_class;
+
+			$this->container_types[ $type ]->_call_init($this->get_access_key());
 		}
 	}
 
@@ -336,54 +390,51 @@ final class _FW_Component_Backend {
 			);
 		}
 
-		{
-			wp_register_style(
-				'fw-font-awesome',
-				fw_get_framework_directory_uri( '/static/libs/font-awesome/css/font-awesome.min.css' ),
-				array(),
-				fw()->manifest->get_version()
-			);
-		}
+		wp_register_style(
+			'fw-font-awesome',
+			fw_get_framework_directory_uri( '/static/libs/font-awesome/css/font-awesome.min.css' ),
+			array(),
+			fw()->manifest->get_version()
+		);
 
-		{
-			wp_register_script(
-				'backbone-relational',
-				fw_get_framework_directory_uri( '/static/libs/backbone-relational/backbone-relational.js' ),
-				array( 'backbone' ),
-				fw()->manifest->get_version(),
-				true
-			);
-		}
+		wp_register_script(
+			'backbone-relational',
+			fw_get_framework_directory_uri( '/static/libs/backbone-relational/backbone-relational.js' ),
+			array( 'backbone' ),
+			fw()->manifest->get_version(),
+			true
+		);
 
-		{
-			wp_register_script(
-				'fw-uri',
-				fw_get_framework_directory_uri( '/static/libs/uri/URI.js' ),
-				array(),
-				fw()->manifest->get_version(),
-				true
-			);
-		}
+		wp_register_script(
+			'fw-uri',
+			fw_get_framework_directory_uri( '/static/libs/uri/URI.js' ),
+			array(),
+			fw()->manifest->get_version(),
+			true
+		);
 
-		{
-			wp_register_script(
-				'fw-moment',
-				fw_get_framework_directory_uri( '/static/libs/moment/moment.min.js' ),
-				array(),
-				fw()->manifest->get_version(),
-				true
-			);
-		}
+		wp_register_script(
+			'fw-moment',
+			fw_get_framework_directory_uri( '/static/libs/moment/moment.min.js' ),
+			array(),
+			fw()->manifest->get_version(),
+			true
+		);
 
-		{
-			wp_register_script(
-				'fw-form-helpers',
-				fw_get_framework_directory_uri( '/static/js/fw-form-helpers.js' ),
-				array( 'jquery' ),
-				fw()->manifest->get_version(),
-				true
-			);
-		}
+		wp_register_script(
+			'fw-form-helpers',
+			fw_get_framework_directory_uri( '/static/js/fw-form-helpers.js' ),
+			array( 'jquery' ),
+			fw()->manifest->get_version(),
+			true
+		);
+
+		wp_register_style(
+			'fw-unycon',
+			fw_get_framework_directory_uri( '/static/libs/unycon/unycon.css' ),
+			array(),
+			fw()->manifest->get_version()
+		);
 
 		$this->static_registered = true;
 	}
@@ -426,7 +477,7 @@ final class _FW_Component_Backend {
 
 		/**
 		 * Use this action if you what to add the settings page in a custom place in menu
-		 * Usage example http://pastebin.com/0KQXLPZj
+		 * Usage example http://pastebin.com/gvAjGRm1
 		 */
 		do_action( 'fw_backend_add_custom_settings_menu', $data );
 
@@ -465,19 +516,70 @@ final class _FW_Component_Backend {
 		add_action( 'admin_menu', array( $this, '_action_admin_change_theme_settings_order' ), 9999 );
 	}
 
+	public function _filter_admin_footer_text( $html ) {
+		if (
+			(
+				current_user_can( 'update_themes' )
+				||
+				current_user_can( 'update_plugins' )
+			)
+			&&
+			fw_current_screen_match(array(
+				'only' => array(
+					array('parent_base' => fw()->extensions->manager->get_page_slug()) // Unyson Extensions page
+				)
+			))
+		) {
+			return ( empty( $html ) ? '' : $html . '<br/>' )
+			. '<em>'
+			. str_replace(
+				array(
+					'{wp_review_link}',
+					'{facebook_share_link}',
+					'{twitter_share_link}',
+				),
+				array(
+					fw_html_tag('a', array(
+						'target' => '_blank',
+						'href'   => 'https://wordpress.org/support/view/plugin-reviews/unyson?filter=5#postform',
+					), __('leave a review', 'fw')),
+					fw_html_tag('a', array(
+						'target' => '_blank',
+						'href'   => 'https://www.facebook.com/sharer/sharer.php?'. http_build_query(array(
+							'u' => 'http://unyson.io',
+						)),
+						'onclick' => 'return !window.open(this.href, \'Facebook\', \'width=640,height=300\')',
+					), __('Facebook', 'fw')),
+					fw_html_tag('a', array(
+						'target' => '_blank',
+						'href'   => 'https://twitter.com/home?'. http_build_query(array(
+							'status' => __('Unyson WordPress Framework is the fastest and easiest way to develop a premium theme. I highly recommend it', 'fw')
+								.' http://unyson.io/ #unysonwp',
+						)),
+						'onclick' => 'return !window.open(this.href, \'Twitter\', \'width=640,height=430\')',
+					), __('Twitter', 'fw')),
+				),
+				__('If you like Unyson, {wp_review_link}, share on {facebook_share_link} or {twitter_share_link}.', 'fw')
+			)
+			. '</em>';
+		} else {
+			return $html;
+		}
+	}
+
 	/**
 	 * Print framework version in the admin footer
 	 *
-	 * @param string $value
+	 * @param string $html
 	 *
 	 * @return string
 	 * @internal
 	 */
-	public function _filter_footer_version( $value ) {
+	public function _filter_footer_version( $html ) {
 		if ( current_user_can( 'update_themes' ) || current_user_can( 'update_plugins' ) ) {
-			return ( empty( $value ) ? '' : $value . ' | ' ) . fw()->manifest->get_name() . ' ' . fw()->manifest->get_version();
+			return ( empty( $html ) ? '' : $html . ' | ' ) . fw()->manifest->get_name() . ' ' . fw()->manifest->get_version();
 		} else {
-			return $value;
+			return $html;
 		}
 	}
 
@@ -534,41 +636,53 @@ final class _FW_Component_Backend {
 
 		$collected = array();
 
-		fw_collect_first_level_options( $collected, $options );
+		fw_collect_options( $collected, $options, array(
+			'limit_option_types' => false,
+			'limit_container_types' => false,
+			'limit_level' => 1,
+			'info_wrapper' => true,
+		) );
 
-		unset( $options ); // free memory
-
-		if ( empty( $collected['boxes'] ) ) {
-			return; // only boxes are allowed on edit post page
+		if (empty($collected)) {
+			return;
 		}
-
-		$boxes =& $collected['boxes'];
-
-		unset( $collected ); // free memory
 
 		$values = fw_get_db_post_option( $post->ID );
 
-		foreach ( $boxes as $id => &$box ) {
-			if (empty($box['options'])) {
-				continue;
+		foreach ( $collected as &$option ) {
+			if (
+				$option['group'] === 'container'
+				&&
+				$option['option']['type'] === 'box'
+			) { // this is a box, add it as a metabox
+				$context  = isset( $option['option']['context'] )
+					? $option['option']['context']
+					: 'normal';
+				$priority = isset( $option['option']['priority'] )
+					? $option['option']['priority']
+					: 'default';
+
+				add_meta_box(
+					'fw-options-box-' . $option['id'],
+					empty( $option['option']['title'] ) ? ' ' : $option['option']['title'],
+					$this->print_meta_box_content_callback,
+					$post_type,
+					$context,
+					$priority,
+					$this->render_options( $option['option']['options'], $values )
+				);
+			} else { // this is not a box, wrap it in auto-generated box
+				add_meta_box(
+					'fw-options-box:auto-generated:'. time() .':'. fw_unique_increment(),
+					' ',
+					$this->print_meta_box_content_callback,
+					$post_type,
+					'normal',
+					'default',
+					$this->render_options( array($option['id'] => $option['option']), $values )
+				);
 			}
-
-			$context  = isset( $box['context'] ) ? $box['context'] : 'normal';
-			$priority = isset( $box['priority'] ) ? $box['priority'] : 'default';
-
-			add_meta_box(
-				'fw-options-box-' . $id,
-				empty( $box['title'] ) ? ' ' : $box['title'],
-				$this->print_meta_box_content_callback,
-				$post_type,
-				$context,
-				$priority,
-				$this->render_options( $box['options'], $values )
-			);
-
-			unset( $box[ $id ] ); // free memory
 		}
-		unset($box);
 	}
 
 	/**
@@ -583,22 +697,22 @@ final class _FW_Component_Backend {
 
 		$collected = array();
 
-		fw_collect_first_level_options( $collected, $options );
+		fw_collect_options( $collected, $options, array(
+			'limit_option_types' => false,
+			'limit_container_types' => array(), // only simple options are allowed on taxonomy edit page
+			'limit_level' => 1,
+		) );
 
-		unset( $options );
-
-		if ( empty( $collected['options'] ) ) {
+		if ( empty( $collected ) ) {
 			return;
-		} // only simple options are allowed on taxonomy edit page
+		}
 
 		$values = fw_get_db_term_option( $term->term_id, $term->taxonomy );
 
 		// fixes word_press style: .form-field input { width: 95% }
 		echo '<style type="text/css">.fw-option-type-radio input, .fw-option-type-checkbox input { width: auto; }</style>';
 
-		echo $this->render_options( $collected['options'], $values, array(), 'taxonomy' );
-
-		unset( $options );
+		echo $this->render_options( $collected, $values, array(), 'taxonomy' );
 	}
 
 	public function _action_init() {
@@ -1216,97 +1330,55 @@ final class _FW_Component_Backend {
 		}
 
 		$collected = array();
-		fw_collect_first_level_options( $collected, $options );
 
-		if ( empty( $collected['all'] ) ) {
+		fw_collect_options( $collected, $options, array(
+			'limit_option_types' => false,
+			'limit_container_types' => false,
+			'limit_level' => 1,
+			'info_wrapper' => true,
+		) );
+
+		if ( empty( $collected ) ) {
 			return false;
 		}
 
 		$html = '';
 
-		$option = reset( $collected['all'] );
+		$option = reset( $collected );
 
-		$collected_type         = $option['type'];
+		$collected_type = array(
+			'group' => $option['group'],
+			'type'  => $option['option']['type'],
+		);
 		$collected_type_options = array(
 			$option['id'] => &$option['option']
 		);
 
 		while ( $collected_type_options ) {
-			$option = next( $collected['all'] );
+			$option = next( $collected );
 
 			if ( $option ) {
-				if ( $option['type'] === $collected_type ) {
+				if (
+					$option['group'] === $collected_type['group']
+					&&
+					$option['option']['type'] === $collected_type['type']
+				) {
 					$collected_type_options[ $option['id'] ] = &$option['option'];
 					continue;
 				}
 			}
 
-			switch ( $collected_type ) {
-				case 'tab':
-					$html .= fw_render_view( fw_get_framework_directory( '/views/backend-tabs.php' ), array(
-						'tabs'         => &$collected_type_options,
-						'values'       => &$values,
-						'options_data' => $options_data,
-					) );
-					break;
-				case 'box':
-					$boxes_html = '';
-
-					foreach ( $collected_type_options as $id => &$box ) {
-						if (empty($box['options'])) {
-							continue;
-						}
-
-						// prepare attributes
-						{
-							$attr = isset( $box['attr'] ) ? $box['attr'] : array();
-
-							unset( $attr['id'] ); // do not allow id overwrite, it is sent in first argument of render_box()
-						}
-
-						$boxes_html .= $this->render_box(
-							'fw-options-box-' . $id,
-							empty( $box['title'] ) ? ' ' : $box['title'],
-							$this->render_options( $box['options'], $values, $options_data ),
-							array(
-								'attr' => $attr
-							)
-						);
-					}
-					unset($box);
-
-					if (!empty($boxes_html)) {
-						$html .= '<div class="fw-backend-postboxes metabox-holder">';
-						$html .= $boxes_html;
-						$html .= '</div>';
-					}
-
-					unset($boxes_html);
-					break;
-				case 'group':
-					foreach ( $collected_type_options as $id => &$group ) {
-						// prepare attributes
-						{
-							$attr = isset( $group['attr'] ) ? $group['attr'] : array();
-
-							$attr['id'] = 'fw-backend-options-group-' . $id;
-
-							if ( ! isset( $attr['class'] ) ) {
-								$attr['class'] = 'fw-backend-options-group';
-							} else {
-								$attr['class'] = 'fw-backend-options-group ' . $attr['class'];
-							}
-						}
-
-						$html .= '<div ' . fw_attr_to_html( $attr ) . '>';
-						$html .= $this->render_options( $group['options'], $values, $options_data );
-						$html .= '</div>';
-					}
-					unset($group);
+			switch ( $collected_type['group'] ) {
+				case 'container':
+					$html .= $this->container_type($collected_type['type'])->render(
+						$collected_type_options,
+						$values,
+						$options_data
+					);
 					break;
 				case 'option':
 					foreach ( $collected_type_options as $id => &$_option ) {
-						$data = $options_data;
+						$data = $options_data; // do not change directly to not affect next loops
 
 						$data['value'] = isset( $values[ $id ] ) ? $values[ $id ] : null;
 
@@ -1320,13 +1392,16 @@ final class _FW_Component_Backend {
 					unset($_option);
 					break;
 				default:
-					$html .= '<p><em>' . __( 'Unknown collected type', 'fw' ) . ': ' . $collected_type . '</em></p>';
+					$html .= '<p><em>' . __( 'Unknown collected group', 'fw' ) . ': ' . $collected_type['group'] . '</em></p>';
 			}
 
 			unset( $collected_type, $collected_type_options );
 
 			if ( $option ) {
-				$collected_type         = $option['type'];
+				$collected_type = array(
+					'group' => $option['group'],
+					'type'  => $option['option']['type'],
+				);
 				$collected_type_options = array(
 					$option['id'] => &$option['option']
 				);
@@ -1360,8 +1435,21 @@ final class _FW_Component_Backend {
 			wp_enqueue_script( 'fw-backend-options' );
 		}
 
-		foreach ( fw_extract_only_options( $options ) as $option_id => $option ) {
-			fw()->backend->option_type( $option['type'] )->enqueue_static( $option_id, $option );
+		$collected = array();
+
+		fw_collect_options( $collected, $options, array(
+			'limit_option_types' => false,
+			'limit_container_types' => false,
+			'limit_level' => 0,
+			'info_wrapper' => true,
+		) );
+
+		foreach ( $collected as &$option ) {
+			if ($option['group'] === 'option') {
+				fw()->backend->option_type($option['option']['type'])->enqueue_static($option['id'], $option['option']);
+			} elseif ($option['group'] === 'container') {
+				fw()->backend->container_type($option['option']['type'])->enqueue_static($option['id'], $option['option']);
+			}
 		}
 	}
 
@@ -1571,11 +1659,25 @@ final class _FW_Component_Backend {
 	 * @internal
 	 */
 	public function _register_option_type( FW_Access_Key $access_key, $option_type_class ) {
-		if ( $access_key->get_key() !== 'register_option_type' ) {
+		if ( $access_key->get_key() !== 'fw_option_type' ) {
 			trigger_error( 'Call denied', E_USER_ERROR );
 		}
 
 		$this->register_option_type( $option_type_class );
+	}
+
+	/**
+	 * @param FW_Access_Key $access_key
+	 * @param string|FW_Container_Type $container_type_class
+	 *
+	 * @internal
+	 */
+	public function _register_container_type( FW_Access_Key $access_key, $container_type_class ) {
+		if ( $access_key->get_key() !== 'fw_container_type' ) {
+			trigger_error( 'Call denied', E_USER_ERROR );
+		}
+
+		$this->register_container_type( $container_type_class );
 	}
 
 	/**
@@ -1626,6 +1728,53 @@ final class _FW_Component_Backend {
 	}
 
 	/**
+	 * @param string $container_type
+	 *
+	 * @return FW_Container_Type|FW_Container_Type_Undefined
+	 */
+	public function container_type( $container_type ) {
+		if ( is_array( $this->container_types_pending_registration ) ) {
+			// This method is called first time
+
+			do_action('fw_container_types_init');
+
+			// Register pending container types
+			{
+				$pending_container_types = $this->container_types_pending_registration;
+
+				// clear this property, so register_container_type() will not add container types to pending anymore
+				$this->container_types_pending_registration = false;
+
+				foreach ( $pending_container_types as $container_type_class ) {
+					$this->register_container_type( $container_type_class );
+				}
+
+				unset( $pending_container_types );
+			}
+		}
+
+		if ( isset( $this->container_types[ $container_type ] ) ) {
+			return $this->container_types[ $container_type ];
+		} else {
+			if ( is_admin() ) {
+				FW_Flash_Messages::add(
+					'fw-get-container-type-undefined-' . $container_type,
+					sprintf( __( 'Undefined container type: %s', 'fw' ), $container_type ),
+					'warning'
+				);
+			}
+
+			if (!$this->undefined_container_type) {
+				require_once fw_get_framework_directory('/includes/container-types/class-fw-container-type-undefined.php');
+
+				$this->undefined_container_type = new FW_Container_Type_Undefined();
+			}
+
+			return $this->undefined_container_type;
+		}
+	}
+
+	/**
 	 * @param WP_Customize_Manager $wp_customize
 	 * @internal
 	 */
@@ -1667,91 +1816,111 @@ final class _FW_Component_Backend {
 	 */
 	private function customizer_register_options($wp_customize, $options, $parent_data = array()) {
 		$collected = array();
-		fw_collect_first_level_options( $collected, $options );
 
-		if (empty($collected['all'])) {
+		fw_collect_options( $collected, $options, array(
+			'limit_option_types' => false,
+			'limit_container_types' => false,
+			'limit_level' => 1,
+			'info_wrapper' => true,
+		) );
+
+		if ( empty( $collected ) ) {
 			return;
 		}
 
-		foreach ($collected['all'] as &$opt) {
-			switch ($opt['type']) {
-				case 'tab':
-					$args = array(
-						'title' => $opt['option']['title'],
-						'description' => empty($opt['option']['desc']) ? '' : $opt['option']['desc'],
-					);
+		foreach ($collected as &$opt) {
+			switch ($opt['group']) {
+				case 'container':
+					// Check if has container options
+					{
+						$_collected = array();
 
-					if ($parent_data) {
-						trigger_error('Not supported panel parent, type: '. $parent_data['type'], E_USER_WARNING);
-						break;
+						fw_collect_options( $_collected, $opt['option']['options'], array(
+							'limit_option_types' => array(),
+							'limit_container_types' => false,
+							'limit_level' => 1,
+							'limit' => 1,
+							'info_wrapper' => false,
+						) );
+
+						$has_containers = !empty($_collected);
+
+						unset($_collected);
 					}
 
-					$wp_customize->add_panel(
-						$opt['id'],
-						$args
+					$children_data = array(
+						'group' => 'container',
+						'id' => $opt['id']
 					);
 
-					$this->customizer_register_options(
-						$wp_customize,
-						$opt['option']['options'],
-						array(
-							'type' => 'panel',
-							'id' => $opt['id']
-						)
-					);
-					break;
-				case 'box':
 					$args = array(
-						'title' => $opt['option']['title'],
+						'title' => empty($opt['option']['title'])
+							? fw_id_to_title($opt['id'])
+							: $opt['option']['title'],
+						'description' => empty($opt['option']['desc'])
+							? ''
+							: $opt['option']['desc'],
 					);
 
-					if ($parent_data) {
-						if ($parent_data['type'] === 'panel') {
-							$args['panel'] = $parent_data['id'];
-						} else {
-							trigger_error('Not supported section parent, type: '. $parent_data['type'], E_USER_WARNING);
+					if ($has_containers) {
+						if ($parent_data) {
+							trigger_error($opt['id'] .' panel can\'t have a parent ('. $parent_data['id'] .')', E_USER_WARNING);
 							break;
 						}
-					}
 
-					$wp_customize->add_section($opt['id'], $args);
+						$wp_customize->add_panel($opt['id'], $args);
+
+						$children_data['customizer_type'] = 'panel';
+					} else {
+						if ($parent_data) {
+							if ($parent_data['customizer_type'] === 'panel') {
+								$args['panel'] = $parent_data['id'];
+							} else {
+								trigger_error($opt['id'] .' section can have only panel parent ('. $parent_data['id'] .')', E_USER_WARNING);
+								break;
+							}
+						}
+
+						$wp_customize->add_section($opt['id'], $args);
+
+						$children_data['customizer_type'] = 'section';
+					}
 
 					$this->customizer_register_options(
 						$wp_customize,
 						$opt['option']['options'],
-						array(
-							'type' => 'section',
-							'id' => $opt['id']
-						)
+						$children_data
 					);
+
+					unset($children_data);
 					break;
 				case 'option':
 					$setting_id = FW_Option_Type::get_default_name_prefix() .'['. $opt['id'] .']';
 
 					{
 						$args = array(
-							'label'       => empty($opt['option']['label']) ? '' : $opt['option']['label'],
-							'description' => empty($opt['option']['desc']) ? '' : $opt['option']['desc'],
-							'settings'    => $setting_id,
-							'type'        => 'radio',
-							'choices'     => array(
-								'a' => 'Demo A',
-								'b' => 'Demo B',
-							),
+							'label' => empty($opt['option']['label'])
+								? fw_id_to_title($opt['id'])
+								: $opt['option']['label'],
+							'description' => empty($opt['option']['desc'])
+								? ''
+								: $opt['option']['desc'],
+							'settings' => $setting_id,
 						);
 
 						if ($parent_data) {
-							if ($parent_data['type'] === 'section') {
+							if ($parent_data['customizer_type'] === 'section') {
 								$args['section'] = $parent_data['id'];
 							} else {
-								trigger_error('Not supported control parent, type: '. $parent_data['type'], E_USER_WARNING);
+								trigger_error('Invalid control parent: '. $parent_data['customizer_type'], E_USER_WARNING);
 								break;
 							}
-						} else {
-							// the option is not placed in a section, create a section automatically
+						} else { // the option is not placed in a section, create a section automatically
 							$args['section'] = 'fw_option_auto_section_'. $opt['id'];
 							$wp_customize->add_section($args['section'], array(
-								'title' => empty($opt['option']['label']) ? fw_id_to_title($opt['id']) : $opt['option']['label'],
+								'title' => empty($opt['option']['label'])
+									? fw_id_to_title($opt['id'])
+									: $opt['option']['label'],
 							));
 						}
 					}
@@ -1784,7 +1953,7 @@ final class _FW_Component_Backend {
 					);
 					break;
 				default:
-					trigger_error('Not supported option in customizer, type: '. $opt['type'], E_USER_WARNING); // todo: uncomment
+					trigger_error('Unknown group: '. $opt['group'], E_USER_WARNING);
 			}
 		}
 	}

@@ -587,53 +587,27 @@ function fw_include_file_isolated($file_path, $once = false) {
 }
 
 /**
- * Extract only input options from array with: tabs, boxes, options
+ * Extract only input options (without containers)
  * @param array $options
- * @param array $_recursion_options Do not use this parameter
  * @return array {option_id => option}
  */
-function fw_extract_only_options(array $options, &$_recursion_options = array()) {
-	static $recursion = null;
+function fw_extract_only_options(array $options) {
+	$collected = array();
 
-	if ($recursion === null) {
-		$recursion = array(
-			'level'  => 0,
-			'result' => array(),
-		);
+	fw_collect_options($collected, $options);
 
-		$_recursion_options =& $options;
-	}
-
-	foreach ($_recursion_options as $id => &$option) {
-		if (isset($option['options'])) {
-			// this is container with options
-			$recursion['level']++;
-			fw_extract_only_options(array(), $option['options']);
-			$recursion['level']--;
-		} elseif (isset($option['type']) && is_string($option['type'])) {
-			$recursion['result'][$id] =& $option;
-		} elseif (is_int($id) && is_array($option)) {
-			// this is array with options
-			$recursion['level']++;
-			fw_extract_only_options(array(), $option);
-			$recursion['level']--;
-		}
-	}
-	unset($option);
-
-	if ($recursion['level'] == 0) {
-		$result =& $recursion['result'];
-
-		$recursion = null;
-
-		return $result;
-	}
+	return $collected;
 }
 
 /**
  * Collect correct options from the first level of the array and group them
  * @param array $collected Will be filled with found correct options
  * @param array $options
+ *
+ * @deprecated
+ * It is deprecated since 2.4 because container types were added and there can be any type of containers
+ * but this function is hardcoded only for tab,box,group.
+ * Use fw_collect_options()
  */
 function fw_collect_first_level_options(&$collected, &$options) {
 	if (empty($options)) {
@@ -725,6 +699,194 @@ function fw_collect_first_level_options(&$collected, &$options) {
 		}
 	}
 	unset($option);
+}
+
+/**
+ * @param array $result
+ * @param array $options
+ * @param array $settings
+ * @param array $_recursion_data (private) for internal use
+ */
+function fw_collect_options(&$result, &$options, $settings = array(), $_recursion_data = array()) {
+	static $default_settings = array(
+		/**
+		 * @type bool Wrap the result/collected options in arrays will useful info
+		 *
+		 * If true:
+		 * $result = array(
+		 *   '(container|option):{id}' => array(
+		 *      'id' => '{id}',
+		 *      'level' => int, // from which nested level this option is
+		 *      'group' => 'container|option',
+		 *      'option' => array(...),
+		 *   )
+		 * )
+		 *
+		 * If false:
+		 * $result = array(
+		 *   '{id}' => array(...),
+		 *   // Warning: There can be options and containers with the same id (array key will be replaced)
+		 * )
+		 */
+		'info_wrapper' => false,
+		/**
+		 * @type int Nested options level limit. For e.g. use 1 to collect only first level. 0 is for unlimited.
+		 */
+		'limit_level' => 0,
+		/**
+		 * @type false|array('option-type', ...) Empty array will skip all types
+		 */
+		'limit_option_types' => false,
+		/**
+		 * @type false|array('container-type', ...) Empty array will skip all types
+		 */
+		'limit_container_types' => array(),
+		/**
+		 * @type int Limit the number of options that will be collected
+		 */
+		'limit' => 0,
+	);
+
+	static $access_key = null;
+
+	if (is_null($access_key)) {
+		$access_key = new FW_Access_Key('fw_collect_options');
+	}
+
+	if (empty($options)) {
+		return;
+	}
+
+	$settings = array_merge($default_settings, $settings);
+
+	if (empty($_recursion_data)) {
+		$_recursion_data = array(
+			'level' => 1,
+			'access_key' => $access_key,
+			// todo: maybe add 'parent' => array('id' => '{id}', 'type' => 'container|option') ?
+		);
+	} elseif (
+		!isset($_recursion_data['access_key'])
+		||
+		!($_recursion_data['access_key'] instanceof FW_Access_Key)
+		||
+		!($_recursion_data['access_key']->get_key() === 'fw_collect_options')
+	) {
+		trigger_error('Call not allowed', E_USER_ERROR);
+	}
+
+	if (
+		$settings['limit_level']
+		&&
+		$_recursion_data['level'] > $settings['limit_level']
+	) {
+		return;
+	}
+
+	foreach ($options as $option_id => &$option) {
+		if (isset($option['options'])) { // this is a container
+			do {
+				if (
+					is_array($settings['limit_container_types'])
+					&&
+					!in_array($option['type'], $settings['limit_container_types'])
+				) {
+					break;
+				}
+
+				if (
+					$settings['limit']
+					&&
+					count($result) >= $settings['limit']
+				) {
+					return;
+				}
+
+				if ($settings['info_wrapper']) {
+					$result['container:'. $option_id] = array(
+						'group'  => 'container',
+						'id'     => $option_id,
+						'option' => &$option,
+						'level'  => $_recursion_data['level'],
+					);
+				} else {
+					$result[$option_id] = &$option;
+				}
+			} while(false);
+
+			fw_collect_options(
+				$result,
+				$option['options'],
+				$settings,
+				array_merge($_recursion_data, array('level' => $_recursion_data['level'] + 1))
+			);
+		} elseif (
+			is_int($option_id)
+			&&
+			is_array($option)
+			&&
+			/**
+			 * make sure the array key was generated automatically
+			 * and it's not an associative array with numeric keys created like this: $options[1] = array();
+			 */
+			isset($options[0])
+		) {
+			/**
+			 * Array "without key" containing options.
+			 *
+			 * This happens when options are returned into array from a function:
+			 * $options = array(
+			 *  'foo' => array('type' => 'text'),
+			 *  'bar' => array('type' => 'textarea'),
+			 *
+			 *  // this is our case
+			 *  // go inside this array and extract the options as they are on the same array level
+			 *  array(
+			 *      'hello' => array('type' => 'text'),
+			 *  ),
+			 *
+			 *  // there can be any nested arrays
+			 *  array(
+			 *      array(
+			 *          array(
+			 *              'h1' => array('type' => 'text'),
+			 *          ),
+			 *      ),
+			 *  ),
+			 * )
+			 */
+			fw_collect_options($result, $option, $settings, $_recursion_data);
+		} elseif (isset($option['type'])) { // option
+			if (
+				is_array($settings['limit_option_types'])
+				&&
+				!in_array($option['type'], $settings['limit_option_types'])
+			) {
+				continue;
+			}
+
+			if (
+				$settings['limit']
+				&&
+				count($result) >= $settings['limit']
+			) {
+				return;
+			}
+
+			if ($settings['info_wrapper']) {
+				$result['option:'. $option_id] = array(
+					'group'  => 'option',
+					'id'     => $option_id,
+					'option' => &$option,
+					'level'  => $_recursion_data['level'],
+				);
+			} else {
+				$result[$option_id] = &$option;
+			}
+		} else {
+			trigger_error('Invalid option: '. $option_id, E_USER_WARNING);
+		}
+	}
 }
 
 /**
@@ -885,13 +1047,25 @@ function fw_current_url() {
 			$url .= $_SERVER['SERVER_NAME'];
 		}
 
-		if ($_SERVER['SERVER_PORT'] != '80') {
+		if (!in_array(intval($_SERVER['SERVER_PORT']), array(80, 443))) {
 			$url .= ':'. $_SERVER['SERVER_PORT'];
 		}
 
 		$url .= $_SERVER['REQUEST_URI'];
 
-		$url = set_url_scheme($url);
+		$url = set_url_scheme($url); // https fix
+
+		if ( is_multisite() ) {
+			if ( defined( 'SUBDOMAIN_INSTALL' ) && SUBDOMAIN_INSTALL ) {
+				$site_url = parse_url($url);
+
+				if ( isset($site_url['query']) ) {
+					$url = home_url($site_url['path'] . '?' . $site_url['query']);
+				} else {
+					$url = home_url($site_url['path']);
+				}
+			}
+		}
 	}
 
 	return $url;
