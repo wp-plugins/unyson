@@ -107,7 +107,7 @@ class FW_Option_Type_Range_Slider extends FW_Option_Type {
 			return $option['value'];
 		} else {
 			$input_values = ( isset( $option['properties']['values'] ) && is_array( $option['properties']['values'] ) ) ? explode( ';',
-				$input_value ) : array_map( 'intval', explode( ';', $input_value ) );
+				$input_value ) : array_map( 'floatval', explode( ';', $input_value ) );
 
 			return array(
 				'from' => $input_values[0],
