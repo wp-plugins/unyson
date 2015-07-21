@@ -6,17 +6,22 @@
  * @var string $sortable_image url
  */
 $attr = $option['attr'];
+unset($attr['name']);
+unset($attr['value']);
+
+if ($option['sortable']) {
+	$attr['class'] .= ' is-sortable';
+}
 
 // must contain characters that will remain the same after htmlspecialchars()
 $increment_placeholder = '###-addable-popup-increment-'. fw_rand_md5() .'-###';
 ?>
 <div <?php echo fw_attr_to_html($attr); ?>>
-
 	<div class="items-wrapper">
 		<div class="item default">
 			<div class="input-wrapper">
 				<?php echo fw()->backend->option_type('hidden')->render('', array('value' => '[]'), array(
-					'id_prefix' => $data['id_prefix'] . $id . '-' . $increment_placeholder . '-',
+					'id_prefix' => $data['id_prefix'] . $id . '-' . $increment_placeholder,
 					'name_prefix' => $data['name_prefix'] . '[' . $id . ']',
 				));?>
 			</div>
@@ -47,7 +52,7 @@ $increment_placeholder = '###-addable-popup-increment-'. fw_rand_md5() .'-###';
 		'class' => 'button add-new-item',
 		'onclick' => 'return false;',
 		'data-increment-placeholder' => $increment_placeholder,
-	), __('Add', 'fw'));
+	), fw_htmlspecialchars($option['add-button-text']));
 	?>
 </div>
 

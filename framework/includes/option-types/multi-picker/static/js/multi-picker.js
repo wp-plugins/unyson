@@ -6,7 +6,24 @@
 				$choicesGroups: $this.find('> .choice-group')
 			},
 			chooseGroup = function(groupId) {
-				var $choicesToReveal = elements.$choicesGroups.filter('.choice-' + groupId);
+				var $choicesToReveal = elements.$choicesGroups.filter('.choice-group[data-choice-key="'+ groupId +'"]');
+
+				/**
+				 * The group options html was rendered in an attribute to make page load faster.
+				 * Move the html from attribute in group and init options with js.
+				 */
+				if ($choicesToReveal.attr('data-options-template')) {
+					$choicesToReveal.html(
+						$choicesToReveal.attr('data-options-template')
+					);
+
+					$choicesToReveal.removeAttr('data-options-template');
+
+					fwEvents.trigger('fw:options:init', {
+						$elements: $choicesToReveal
+					});
+				}
+
 				elements.$choicesGroups.removeClass('chosen');
 				$choicesToReveal.addClass('chosen');
 
@@ -23,8 +40,8 @@
 						var $this = $(this),
 							checked = $(this).is(':checked'),
 							value = checked
-										? $this.attr('data-switch-right-value')
-										: $this.attr('data-switch-left-value');
+									? $this.attr('data-switch-right-value')
+									: $this.attr('data-switch-left-value');
 
 						chooseGroup(value);
 					}).trigger('change');
@@ -33,6 +50,9 @@
 					elements.$pickerGroup.find('select').on('change', function() {
 						chooseGroup(this.value);
 					}).trigger('change');
+				},
+				'short-select': function() {
+					this.select();
 				},
 				'radio': function() {
 					elements.$pickerGroup.find(':radio').on('change', function() {
@@ -46,10 +66,23 @@
 				}
 			};
 
-		if (!pickerType || !flows[pickerType]) {
+		if (!pickerType) {
 			console.error('unknown multi-picker type:', pickerType);
 		} else {
-			flows[pickerType]();
+			if (flows[pickerType]) {
+				flows[pickerType]();
+			} else {
+				var eventName = 'fw:option-type:multi-picker:init:'+ pickerType;
+
+				if (fwe.hasListeners(eventName)) {
+					fwe.trigger(eventName, {
+						'$pickerGroup': elements.$pickerGroup,
+						'chooseGroup': chooseGroup
+					});
+				} else {
+					console.error('uninitialized multi-picker type:', pickerType);
+				}
+			}
 		}
 	};
 
