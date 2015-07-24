@@ -324,10 +324,17 @@ abstract class FW_Manifest
 						$extension->manifest->get_name(), $extension->manifest->get_version(), $requirement
 					);
 				} else {
-					$requirement = sprintf(
-						__('%s extension is required (%s)', 'fw'),
-						ucfirst($this->not_met_requirement['extension']), $requirement
-					);
+					if (empty($requirement)) {
+						$requirement = sprintf(
+							__('%s extension is required', 'fw'),
+							ucfirst($this->not_met_requirement['extension'])
+						);
+					} else {
+						$requirement = sprintf(
+							__('%s extension is required (%s)', 'fw'),
+							ucfirst($this->not_met_requirement['extension']), $requirement
+						);
+					}
 				}
 				break;
 			default:
@@ -366,8 +373,12 @@ class FW_Theme_Manifest extends FW_Manifest
 	{
 		$manifest_defaults = array(
 			/**
-			 * You can use this in an option id,
-			 * so that option value will be different on a theme with different id
+			 * You can use this in a wp_option id,
+			 * so that option value will be different on a theme with different id.
+			 *
+			 * fixme: default value should be get_option( 'stylesheet' ) but it can't be changed now
+			 * because there can be themes that has saved Theme Settings in wp_option: 'fw_theme_settings_options:default'
+			 * changing this default value will result in Theme Settings options "reset".
 			 */
 			'id' => 'default',
 			'supported_extensions' => array(

@@ -44,7 +44,19 @@ class FW_Option_Type_Addable_Box extends FW_Option_Type
 	{
 		$new_options = array();
 		foreach ($options as $id => $option) {
-			$new_options[] = array($id => $option);
+			if (is_int($id)) {
+				/**
+				 * this happens when in options array are loaded external options using fw()->theme->get_options()
+				 * and the array looks like this
+				 * array(
+				 *    'hello' => array('type' => 'text'), // this has string key
+				 *    array('hi' => array('type' => 'text')) // this has int key
+				 * )
+				 */
+				$new_options[] = $option;
+			} else {
+				$new_options[] = array($id => $option);
+			}
 		}
 		return $new_options;
 	}
@@ -79,12 +91,14 @@ class FW_Option_Type_Addable_Box extends FW_Option_Type
 			}
 		}
 
-		// Use only groups and options
 		{
-			$collected = array();
-			fw_collect_first_level_options($collected, $option['box-options']);
-			$box_options =& $collected['groups_and_options'];
-			unset($collected);
+			$box_options = array();
+
+			fw_collect_options( $box_options, $option['box-options'], array(
+				'limit_option_types' => false,
+				'limit_container_types' => array('group'), // Use only groups and options
+				'limit_level' => 1,
+			) );
 		}
 
 		$option['attr']['data-for-js'] = json_encode(array(
@@ -144,10 +158,39 @@ class FW_Option_Type_Addable_Box extends FW_Option_Type
 	{
 		return array(
 			'value' => array(),
-			'box-controls' => array(),
+			/**
+			 * Buttons on box head ( near delete button X )
+			 *
+			 * On control click will be triggered a custom event 'fw:option-type:addable-box:control:click'
+			 * on wrapper div (the one that has `.fw-option-type-addable-box` class)
+			 * data about control will be in event data
+			 */
+			'box-controls' => array(
+				// 'control_id' => '<small class="dashicons dashicons-..." title="Some action"></small>'
+			),
 			'box-options' => array(),
+			/**
+			 * Limit boxes that can be added
+			 */
 			'limit' => 0,
+			/**
+			 * Box title backbonejs template
+			 * All box options are available as variables {{- box_option_id }}
+			 *
+			 * Note: Ids with - (instead of underscore _ ) will throw errors
+			 * because 'box-option-id' can't be converted to variable name
+			 *
+			 * Example: 'Hello {{- box_option_id }}'
+			 */
 			'template' => '',
+			'add-button-text' => __('Add', 'fw'),
+			/**
+			 * Makes the boxes sortable
+			 *
+			 * You can disable this in case the boxes order doesn't matter,
+			 * to not confuse the user that if changing the order will affect something.
+			 */
+			'sortable' => true,
 		);
 	}
 }

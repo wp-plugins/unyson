@@ -2,6 +2,29 @@
  * Included on pages where backend options are rendered
  */
 
+var fwBackendOptions = {
+	/**
+	 * Open a tab or sub-tab
+	 */
+	openTab: function(tabId) {
+		if (!tabId) {
+			return;
+		}
+
+		var $tabLink = jQuery(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ tabId +"\']");
+
+		while ($tabLink.length) {
+			$tabLink.trigger("click");
+			$tabLink = $tabLink
+				.closest(".fw-options-tabs-wrapper").parent().closest(".fw-options-tabs-wrapper")
+				.find("> .fw-options-tabs-list > ul > li > a[href=\'#"+ $tabLink.closest(".fw-options-tab").attr("id") +"\']");
+		}
+
+		// click again on focus tab to update the input value
+		jQuery(".fw-options-tabs-wrapper > .fw-options-tabs-list > ul > li > a[href=\'#"+ tabId +"\']").trigger("click");;
+	}
+};
+
 jQuery(document).ready(function($){
 	/**
 	 * Functions
@@ -13,11 +36,10 @@ jQuery(document).ready(function($){
 		 * (fork from /wp-admin/js/postbox.js)
 		 */
 		function addPostboxToggles($boxes) {
-
 			/** Remove events added by /wp-admin/js/postbox.js */
 			$boxes.find('h3, .handlediv').off('click.postboxes');
 
-			var eventNamespace = '.fw-postboxes';
+			var eventNamespace = '.fw-backend-postboxes';
 
 			// make postboxes to close/open on click
 			$boxes
@@ -31,16 +53,6 @@ jQuery(document).ready(function($){
 
 					$box.trigger('fw:box:'+ (isClosed ? 'close' : 'open'));
 					$box.trigger('fw:box:toggle-closed', {isClosed: isClosed});
-				});
-
-			/**
-			 * Prevent event to be propagated to first level WordPress sortable (on edit post page)
-			 * If not prevented, boxes within options can be dragged out of parent box to first level boxes
-			 */
-			$boxes.closest('.postbox-with-fw-options')
-				.off('mousedown'+ eventNamespace) // remove already attached, just to be sure, prevent multiple execution
-				.on('mousedown'+ eventNamespace, '.fw-postbox > h3.hndle, .fw-postbox > .handlediv', function(e){
-					e.stopPropagation();
 				});
 		}
 
@@ -58,11 +70,10 @@ jQuery(document).ready(function($){
 
 	/** Init tabs */
 	fwEvents.on('fw:options:init', function (data) {
-		var $elements = data.$elements.find('.fw-options-tabs-wrapper:not(.fw-option-initialized)');
+		var $elements = data.$elements.find('.fw-options-tabs-wrapper:not(.initialized)');
 
 		if ($elements.length) {
 			$elements.tabs();
-			$elements.addClass('fw-option-initialized');
 
 			$elements.each(function(){
 				var $this = $(this);
@@ -73,42 +84,61 @@ jQuery(document).ready(function($){
 				}
 			});
 
-			setTimeout(function(){
-				$elements.fadeTo('fast', 1);
-			}, 50);
+			$elements.addClass('initialized');
 		}
 	});
 
 	/** Init boxes */
 	fwEvents.on('fw:options:init', function (data) {
-		var $boxes = data.$elements.find('.fw-postbox:not(.fw-postbox-initialized)');
+		var $boxes = data.$elements.find('.fw-postbox:not(.initialized)');
 
-		hideBoxEmptyTitles($boxes);
+		hideBoxEmptyTitles(
+			$boxes.filter('.fw-backend-postboxes > .fw-postbox')
+		);
 
-		setTimeout(function(){
-			addPostboxToggles($boxes);
-		}, 100);
+		addPostboxToggles($boxes);
 
 		/**
 		 * leave open only first boxes
 		 */
-		data.$elements.find('.fw-postboxes > .fw-postbox:not(:first-child)').addClass('closed');
+		$boxes
+			.filter('.fw-backend-postboxes > .fw-postbox:not(.fw-postbox-without-name):not(:first-child):not(.prevent-auto-close)')
+			.addClass('closed');
 
-		$boxes.addClass('fw-postbox-initialized');
+		$boxes.addClass('initialized');
 
-		setTimeout(function(){
-			// trigger on box custom event for others to do something after box initialized
-			$boxes.trigger('fw-options-box:initialized');
-		}, 100);
+		// trigger on box custom event for others to do something after box initialized
+		$boxes.trigger('fw-options-box:initialized');
+	});
+
+	/** Init options */
+	fwEvents.on('fw:options:init', function (data) {
+		data.$elements.find('.fw-backend-option:not(.initialized)')
+			// do nothing, just a the initialized class to make the fadeIn css animation effect
+			.addClass('initialized');
 	});
 
 	/** Fixes */
 	fwEvents.on('fw:options:init', function (data) {
-		/** add special class to first level postboxes that contains framework options */
 		{
+			var eventNamespace = '.fw-backend-postboxes';
+
 			data.$elements.find('.postbox:not(.fw-postbox) .fw-option')
 				.closest('.postbox:not(.fw-postbox)')
-				.addClass('postbox-with-fw-options');
+
+				/**
+				 * Add special class to first level postboxes that contains framework options (on post edit page)
+				 */
+				.addClass('postbox-with-fw-options')
+
+				/**
+				 * Prevent event to be propagated to first level WordPress sortable (on edit post page)
+				 * If not prevented, boxes within options can be dragged out of parent box to first level boxes
+				 */
+				.off('mousedown'+ eventNamespace) // remove already attached (happens when this script is executed multiple times on the same elements)
+				.on('mousedown'+ eventNamespace, '.fw-postbox > h3.hndle, .fw-postbox > .handlediv', function(e){
+					e.stopPropagation();
+				});
 		}
 
 		/**
@@ -118,7 +148,7 @@ jQuery(document).ready(function($){
 		{
 			var $sortables = data.$elements
 				.find('.postbox:not(.fw-postbox) .fw-postbox, .fw-options-tabs-wrapper .fw-postbox')
-				.closest('.fw-postboxes')
+				.closest('.fw-backend-postboxes')
 				.not('.fw-sortable-disabled');
 
 			$sortables.each(function(){
@@ -137,6 +167,10 @@ jQuery(document).ready(function($){
 			data.$elements.find('.postbox-with-fw-options > .inside, .fw-postbox > .inside')
 				.append('<div class="fw-backend-options-last-border-hider"></div>');
 		}
+
+		hideBoxEmptyTitles(
+			data.$elements.find('.postbox-with-fw-options')
+		);
 	});
 
 	/**
@@ -151,10 +185,6 @@ jQuery(document).ready(function($){
 			$helps.addClass('initialized');
 		});
 	})();
-
-	setTimeout(function(){
-		hideBoxEmptyTitles($('.postbox-with-fw-options'));
-	}, 55);
 
 	$('#side-sortables').addClass('fw-force-xs');
 });

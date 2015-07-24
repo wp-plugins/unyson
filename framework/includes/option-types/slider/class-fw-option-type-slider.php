@@ -17,14 +17,14 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 			wp_enqueue_style(
 				'fw-option-' . $this->get_type() . 'ion-range-slider',
 				fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/libs/ion-range-slider/ion.rangeSlider.css' ),
-				fw()->manifest->get_version()
+				'2.0.3'
 			);
 
 			wp_enqueue_script(
 				'fw-option-' . $this->get_type() . 'ion-range-slider',
 				fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/libs/ion-range-slider/ion.rangeSlider.min.js' ),
 				array( 'jquery', 'fw-moment' ),
-				fw()->manifest->get_version()
+				'2.0.3'
 			);
 		}
 
@@ -37,7 +37,7 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 		wp_enqueue_script(
 			'fw-option-' . $this->get_type(),
 			fw_get_framework_directory_uri( '/includes/option-types/' . $this->get_type() . '/static/js/scripts.js' ),
-			array( 'jquery', 'underscore', 'fw-option-' . $this->get_type() . 'ion-range-slider' ),
+			array( 'jquery',  'fw-events', 'underscore', 'fw-option-' . $this->get_type() . 'ion-range-slider' ),
 			fw()->manifest->get_version()
 		);
 	}
@@ -52,6 +52,10 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 	protected function _render( $id, $option, $data ) {
 		$option['properties']['type'] = 'single';
 		$option['properties']['from'] = isset( $data['value'] ) ? $data['value'] : $option['value'];
+
+		if(isset($option['properties']['values']) && is_array($option['properties']['values'])){
+			$option['properties']['from'] = array_search($option['properties']['from'], $option['properties']['values']);
+		}
 
 		$option['attr']['data-fw-irs-options'] = json_encode(
 			$this->default_properties($option['properties'])
@@ -87,9 +91,11 @@ class FW_Option_Type_Slider extends FW_Option_Type {
 	 * @internal
 	 */
 	protected function _get_value_from_input( $option, $input_value ) {
-		$input_values = array_map( 'intval', explode( ';', $input_value ) );
-
-		return $input_values[0];
+		if (is_null($input_value)) {
+			return $option['value'];
+		} else {
+			return floatval($input_value);
+		}
 	}
 
 }
