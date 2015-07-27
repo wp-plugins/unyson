@@ -3,7 +3,7 @@
  * Plugin Name: Unyson
  * Plugin URI: http://unyson.themefuse.com/
  * Description: A free drag & drop framework that comes with a bunch of built in extensions that will help you develop premium themes fast & easy.
- * Version: 2.1.12
+ * Version: 2.4.3
  * Author: ThemeFuse
  * Author URI: http://themefuse.com
  * License: GPL2+
@@ -149,5 +149,19 @@ if (defined('FW')) {
 			return dirname( __FILE__ ) . '/tmp';
 		}
 		add_filter( 'fw_tmp_dir', '_filter_fw_tmp_dir' );
+
+		/** @internal */
+		function _filter_fw_disable_auto_update ( $update, $item ) {
+			if ('unyson' === strtolower($item->slug)) {
+				/**
+				 * Prevent Unyson auto-update
+				 * An attempt to fix https://github.com/ThemeFuse/Unyson/issues/263
+				 */
+				return false;
+			} else {
+				return $update;
+			}
+		}
+		add_filter( 'auto_update_plugin', '_filter_fw_disable_auto_update', 10, 2 );
 	}
 }

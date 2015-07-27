@@ -18,12 +18,12 @@
 
 .fw-option-type-icon .option-type-icon-list i {
 	float: left;
-	width: 1em;
 	border: 1px solid #e1e1e1;
 	margin: 0 0 -1px -1px;
-	padding: 0.5em;
+	padding: 0.5em 0;
 	background-color: #ffffff;
-	overflow: hidden;
+	text-align: center;
+	min-width: 2em;
 }
 
 body.rtl .fw-option-type-icon .option-type-icon-list i {
@@ -32,15 +32,17 @@ body.rtl .fw-option-type-icon .option-type-icon-list i {
 
 .fw-option-type-icon .option-type-icon-list i:before {
 	display: inline-block;
-	width: 1em;
-	text-align: center;
 }
 
-.fw-option-type-icon .option-type-icon-list i.active,
 .fw-option-type-icon .option-type-icon-list i:hover {
 	background: #0074a2;
 	color: #fff;
 	cursor: pointer;
+}
+.fw-option-type-icon .option-type-icon-list i.active:hover,
+.fw-option-type-icon .option-type-icon-list i.active{
+	background: #64bd1f;
+	color: #fff;
 }
 
 .fw-option-type-icon .fw-backend-option {
