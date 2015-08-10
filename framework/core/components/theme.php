@@ -2,7 +2,7 @@
 
 /**
  * Theme Component
- * Works with framework-customizations/theme directory
+ * Works with framework customizations / theme directory
  */
 final class _FW_Component_Theme
 {
@@ -90,6 +90,21 @@ final class _FW_Component_Theme
 		}
 	}
 
+	public function get_customizer_options()
+	{
+		$cache_key = self::$cache_key .'/options/customizer';
+
+		try {
+			return FW_Cache::get($cache_key);
+		} catch (FW_Cache_Not_Found_Exception $e) {
+			$options = apply_filters('fw_customizer_options', $this->get_options('customizer'));
+
+			FW_Cache::set($cache_key, $options);
+
+			return $options;
+		}
+	}
+
 	public function get_post_options($post_type)
 	{
 		$cache_key = self::$cache_key .'/options/posts/'. $post_type;
@@ -112,9 +127,9 @@ final class _FW_Component_Theme
 		try {
 			return FW_Cache::get($cache_key);
 		} catch (FW_Cache_Not_Found_Exception $e) {
-			$options = apply_filters('fw_taxonomy_options', $this->get_options('taxonomies/'. $taxonomy),
-				$taxonomy,
-				null
+			$options = apply_filters('fw_taxonomy_options',
+				$this->get_options('taxonomies/'. $taxonomy),
+				$taxonomy
 			);
 
 			FW_Cache::set($cache_key, $options);
@@ -137,7 +152,12 @@ final class _FW_Component_Theme
 		try {
 			$config = FW_Cache::get($cache_key);
 		} catch (FW_Cache_Not_Found_Exception $e) {
-			$config = array();
+			$config = array(
+				/** Toggle Theme Settings form ajax submit */
+				'settings_form_ajax_submit' => true,
+				/** Toggle Theme Settings side tabs */
+				'settings_form_side_tabs' => false,
+			);
 
 			if (file_exists(fw_get_template_customizations_directory('/theme/config.php'))) {
 				$variables = fw_get_variables_from_file(fw_get_template_customizations_directory('/theme/config.php'), array('cfg' => null));

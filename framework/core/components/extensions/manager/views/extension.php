@@ -36,17 +36,31 @@ if (isset($lists['available'][$name])) {
 		$thumbnail = fw_akg('thumbnail', $lists['installed'][$name]['manifest'], $thumbnail);
 	}
 }
+
+$is_compatible =
+	isset($lists['supported'][$name]) // is listed in the supported extensions list in theme manifest
+	||
+	($installed_data && $installed_data['is']['theme']); // is located in the theme
+
+$wrapper_class = 'fw-col-xs-12 fw-col-lg-6 fw-extensions-list-item';
+
+if ($installed_data && !$is_active) {
+	$wrapper_class .= ' disabled';
+}
+
+if (!$installed_data && !$is_compatible) {
+	$wrapper_class .= ' not-compatible';
+}
 ?>
-<div class="fw-col-xs-12 fw-col-lg-6 fw-extensions-list-item<?php if ($installed_data && !$is_active): ?> disabled<?php endif; ?>" id="fw-ext-<?php echo esc_attr($name) ?>">
+<div class="<?php echo esc_attr($wrapper_class) ?>" id="fw-ext-<?php echo esc_attr($name) ?>">
 	<div class="inner">
-		<table width="100%">
-			<tbody>
-			<tr>
-				<td valign="top" align="left" width="140">
+		<div class="fw-extension-list-item-table">
+			<div class="fw-extension-list-item-table-row">
+				<div class="fw-extension-list-item-table-cell cell-1">
 					<img height="128" src="<?php echo esc_attr($thumbnail) ?>" class="fw-extensions-list-item-thumbnail" alt="Thumbnail"/>
-				</td>
-				<td valign="middle" align="left" class="fw-extensions-list-item-details">
-					<h3 class="fw-extensions-list-item-title"><?php
+				</div>
+				<div class="fw-extension-list-item-table-cell cell-2">
+					<h3 class="fw-extensions-list-item-title"<?php if ($is_active): ?> title="v<?php echo esc_attr(fw()->extensions->get($name)->manifest->get_version()) ?>"<?php endif; ?>><?php
 						if ($is_active && ($extension_link = fw()->extensions->get($name)->_get_link())) {
 							echo fw_html_tag('a', array('href' => $extension_link), $title);
 						} else {
@@ -82,16 +96,11 @@ if (isset($lists['available'][$name])) {
 						unset( $_links );
 					}
 					?>
-					<?php
-					if (
-						isset($lists['supported'][$name]) // is listed in the supported extensions list in theme manifest
-						||
-						($installed_data && $installed_data['source'] !== 'framework') // is located in the theme
-					): ?>
+					<?php if ($is_compatible): ?>
 						<p><em><strong><span class="dashicons dashicons-yes"></span> <?php _e('Compatible', 'fw') ?></strong> <?php _e('with your current theme', 'fw') ?></em></p>
 					<?php endif; ?>
-				</td>
-				<td valign="middle" align="left" width="10">
+				</div>
+				<div class="fw-extension-list-item-table-cell cell-3">
 					<?php if ($is_active): ?>
 						<form action="<?php echo esc_attr($link) ?>&sub-page=deactivate&extension=<?php echo esc_attr($name) ?>" method="post">
 							<?php wp_nonce_field($nonces['deactivate']['action'], $nonces['deactivate']['name']); ?>
@@ -128,10 +137,9 @@ if (isset($lists['available'][$name])) {
 							<input type="submit" class="button" value="<?php esc_attr_e('Download', 'fw') ?>">
 						</form>
 					<?php endif; ?>
-				</td>
-			</tr>
-			</tbody>
-		</table>
+				</div>
+			</div>
+		</div>
 		<?php if ($installed_data): ?>
 			<?php if (!$is_active): ?>
 				<?php if (!fw()->extensions->_get_db_active_extensions($name)): ?>

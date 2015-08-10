@@ -48,6 +48,7 @@ if (defined('FW')) {
 				'database',
 				'class-fw-flash-messages',
 				'class-fw-resize',
+				'class-fw-wp-list-table'
 			)
 			as $file
 		) {
@@ -57,7 +58,7 @@ if (defined('FW')) {
 		/**
 		 * Load includes
 		 */
-		foreach (array('hooks', 'option-types') as $file) {
+		foreach (array('hooks') as $file) {
 			require $fw_dir .'/includes/'. $file .'.php';
 		}
 

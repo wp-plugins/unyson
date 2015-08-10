@@ -23,7 +23,7 @@ class FW_Flash_Messages
 	{
 		$messages = FW_Session::get(self::$session_key);
 
-		if (!is_array($messages)) {
+		if (empty($messages) || !is_array($messages)) {
 			$messages = array_fill_keys(array_keys(self::$available_types), array());
 		}
 
@@ -122,7 +122,10 @@ class FW_Flash_Messages
 		foreach ($all_messages as $type => $messages) {
 			if (!empty($messages)) {
 				foreach ($messages as $id => $data) {
-					$html[$type] .= '<div class="'. self::$available_types[$type] .' fw-flash-message"><p>'. $data['message'] .'</p></div>';
+					$html[$type] .=
+						'<div class="'. self::$available_types[$type] .' fw-flash-message">'.
+							'<p data-id="'. esc_attr($id) .'">'. $data['message'] .'</p>'.
+						'</div>';
 
 					unset($all_messages[$type][$id]);
 				}
@@ -140,6 +143,7 @@ class FW_Flash_Messages
 
 	/**
 	 * Use this method to print messages html in frontend
+	 * @return bool If some html was printed or not
 	 */
 	public static function _print_frontend()
 	{
@@ -148,30 +152,55 @@ class FW_Flash_Messages
 		$html = array_fill_keys(array_keys(self::$available_types), '');
 		$all_messages = self::get_messages();
 
+		$messages_exists = false;
+
 		foreach ($all_messages as $type => $messages) {
-			if (!empty($messages)) {
-				foreach ($messages as $id => $data) {
-					$html[$type] .= '<li class="fw-flash-message">'. nl2br($data['message']) .'</li>';
-
-					unset($all_messages[$type][$id]);
-				}
-
-				$html[$type] = '<ul class="fw-flash-type-'. $type .'">'. $html[$type] .'</ul>';
+			if (empty($messages)) {
+				continue;
 			}
+
+			foreach ($messages as $id => $data) {
+				$html[$type] .= '<li class="fw-flash-message">'. nl2br($data['message']) .'</li>';
+
+				unset($all_messages[$type][$id]);
+			}
+
+			$html[$type] = '<ul class="fw-flash-type-'. $type .'">'. $html[$type] .'</ul>';
+
+			$messages_exists = true;
 		}
 
 		self::set_messages($all_messages);
 
-		echo '<div class="fw-flash-messages">';
-		echo implode("\n\n", $html);
-		echo '</div>';
-
 		self::$frontend_printed = true;
+
+		if ($messages_exists) {
+			echo '<div class="fw-flash-messages">';
+			echo implode("\n\n", $html);
+			echo '</div>';
+
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	public static function _frontend_printed()
 	{
 		return self::$frontend_printed;
+	}
+
+	public static function _get_messages($clear = false)
+	{
+		self::process_pending_remove_ids();
+
+		$messages = self::get_messages();
+
+		if ($clear) {
+			self::set_messages(array());
+		}
+
+		return $messages;
 	}
 }
 
@@ -211,25 +240,62 @@ if (is_admin()) {
 			return;
 		}
 
-		FW_Flash_Messages::_print_frontend();
+		if (!FW_Flash_Messages::_print_frontend()) {
+			return;
+		}
 
-		echo
-		'<script type="text/javascript">'.
-		'  (function(){'.
-		'    if (typeof jQuery === "undefined") return;'.
-		'    jQuery(function($){'.
-		'      var $container = $("#content .entry-content:first");'.
-		'      if (!$container.length) $container = $(document.body);'.
-		'      $(".fw-flash-messages").prependTo($container);'.
-		'    });'.
-		'  })();'.
-		'</script>'.
-		'<style type="text/css">'.
-		'  .fw-flash-messages .fw-flash-type-error { color: #f00; }'.
-		'  .fw-flash-messages .fw-flash-type-warning { color: #f70; }'.
-		'  .fw-flash-messages .fw-flash-type-success { color: #070; }'.
-		'  .fw-flash-messages .fw-flash-type-info { color: #07f; }'.
-		'</style>';
+		?>
+		<script type="text/javascript">
+			(function(){
+				if (typeof jQuery === "undefined") {
+					return;
+				}
+
+				jQuery(function($){
+					var $container;
+
+					// Try to find the content element
+					{
+						var selector, selectors = [
+							'#main #content',
+							'#content #main',
+							'#main',
+							'#content',
+							'#content-container',
+							'#container',
+							'.container:first'
+						];
+
+						while (selector = selectors.shift()) {
+							$container = $(selector);
+
+							if ($container.length) {
+								break;
+							}
+						}
+					}
+
+					if (!$container.length) {
+						// Try to find main page H1 container
+						$container = $('h1:first').parent();
+					}
+
+					if (!$container.length) {
+						// If nothing found, just add to body
+						$container = $(document.body);
+					}
+
+					$(".fw-flash-messages").prependTo($container);
+				});
+			})();
+		</script>
+		<style type="text/css">
+			.fw-flash-messages .fw-flash-type-error { color: #f00; }
+			.fw-flash-messages .fw-flash-type-warning { color: #f70; }
+			.fw-flash-messages .fw-flash-type-success { color: #070; }
+			.fw-flash-messages .fw-flash-type-info { color: #07f; }
+		</style>
+		<?php
 	}
 	add_action('wp_footer', '_action_fw_flash_message_frontend_print', 9999);
 }
