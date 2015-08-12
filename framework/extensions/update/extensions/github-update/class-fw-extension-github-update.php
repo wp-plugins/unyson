@@ -41,6 +41,15 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 	{
 	}
 
+	/**
+	 * @param string $append '/foo/bar'
+	 * @return string
+	 */
+	private function get_github_api_url($append)
+	{
+		return apply_filters('fw_github_api_url', 'https://api.github.com') . $append;
+	}
+
 	private function fetch_latest_version($user_slash_repo)
 	{
 		/**
@@ -58,7 +67,9 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 
 		$http = new WP_Http();
 
-		$response = $http->get('https://api.github.com/repos/'. $user_slash_repo .'/releases');
+		$response = $http->get(
+			$this->get_github_api_url('/repos/'. $user_slash_repo .'/releases/latest')
+		);
 
 		unset($http);
 
@@ -101,18 +112,18 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 			}
 		}
 
-		$releases = json_decode($response['body'], true);
+		$release = json_decode($response['body'], true);
 
 		unset($response);
 
-		if (empty($releases)) {
+		if (empty($release)) {
 			return new WP_Error(
 				'fw_ext_update_github_fetch_no_releases',
 				sprintf(__('No releases found in repository "%s".', 'fw'), $user_slash_repo)
 			);
 		}
 
-		return $releases[0]['tag_name'];
+		return $release['tag_name'];
 	}
 
 	/**
@@ -203,7 +214,9 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 	{
 		$http = new WP_Http();
 
-		$response = $http->get('https://api.github.com/repos/'. $user_slash_repo .'/releases');
+		$response = $http->get(
+			$this->get_github_api_url('/repos/'. $user_slash_repo .'/releases/tags/'. $version)
+		);
 
 		unset($http);
 
@@ -240,43 +253,28 @@ class FW_Extension_Github_Update extends FW_Ext_Update_Service
 			}
 		}
 
-		$releases = json_decode($response['body'], true);
+		$release = json_decode($response['body'], true);
 
 		unset($response);
 
-		if (empty($releases)) {
-			return new WP_Error(
-				'fw_ext_update_github_download_no_releases',
-				sprintf(
-					__('%s github repository "%s" has no releases.', 'fw'),
-					$title, $user_slash_repo
-				)
-			);
-		}
-
-		$release = false;
-
-		foreach ($releases as $_release) {
-			if ($_release['tag_name'] === $version) {
-				$release = $_release;
-			}
-		}
-
 		if (empty($release)) {
 			return new WP_Error(
-				'fw_ext_update_github_download_not_existing_release',
+				'fw_ext_update_github_download_no_release',
 				sprintf(
-					__('%s release "%s" does not exist.', 'fw'),
-					$title, $version
+					__('%s github repository "%s" does not have the "%s" release.', 'fw'),
+					$title, $user_slash_repo, $version
 				)
 			);
 		}
 
 		$http = new WP_Http();
 
-		$response = $http->request($release['zipball_url'], array(
-			'timeout' => $this->download_timeout,
-		));
+		$response = $http->request(
+			'https://github.com/'. $user_slash_repo .'/archive/'. $release['tag_name'] .'.zip',
+			array(
+				'timeout' => $this->download_timeout,
+			)
+		);
 
 		unset($http);
 

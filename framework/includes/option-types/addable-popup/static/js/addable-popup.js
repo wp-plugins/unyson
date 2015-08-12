@@ -1,6 +1,5 @@
 (function ($, _, fwEvents, window) {
-
-	addablePopup = function () {
+	var addablePopup = function () {
 		var $this = $(this),
 			$defaultItem = $this.find('.item.default'),
 			nodes = {
@@ -15,13 +14,18 @@
 			utils = {
 				modal: new fw.OptionsModal({
 					title: data.title,
-					options: data.options
+					options: data.options,
+					size : data.size
 				}),
 				countItems: function () {
 					return nodes.$itemsWrapper.find('.item:not(.default)').length;
 				},
 				removeDefaultItem: function () {
 					nodes.$itemsWrapper.find('.item.default').remove();
+				},
+				toogleNodes : function(){
+					utils.toogleItemsWrapper();
+					utils.toogleAddButton();
 				},
 				toogleItemsWrapper: function () {
 
@@ -31,19 +35,41 @@
 						nodes.$itemsWrapper.show();
 					}
 				},
+				toogleAddButton: function(){
+					if(data.limit !== 0 ){
+						(utils.countItems() >= data.limit ) ?
+							nodes.$addButton.hide() :
+							nodes.$addButton.show();
+					}
+				},
 				init: function () {
 					utils.initItemsTemplates();
-					utils.toogleItemsWrapper();
+					utils.toogleNodes();
 					utils.removeDefaultItem();
 					utils.initSortable();
 				},
 				initSortable: function () {
+					if (!nodes.$optionWrapper.hasClass('is-sortable')) {
+						return false;
+					}
+
 					nodes.$itemsWrapper.sortable({
 						items: '.item:not(.default)',
 						cursor: 'move',
 						distance: 2,
 						tolerance: 'pointer',
-						axis: 'y'
+						axis: 'y',
+						update: function(){
+							nodes.$optionWrapper.trigger('change'); // for customizer
+						},
+						start: function(e, ui){
+							// Update the height of the placeholder to match the moving item.
+							{
+								var height = ui.item.outerHeight() - 1;
+
+								ui.placeholder.height(height);
+							}
+						}
 					});
 				},
 				initItemsTemplates: function () {
@@ -101,7 +127,9 @@
 			e.stopPropagation();
 			e.preventDefault();
 			$(this).closest('.item').remove();
-			utils.toogleItemsWrapper();
+			utils.toogleNodes();
+
+			nodes.$optionWrapper.trigger('change'); // for customizer
 		});
 
 		nodes.$itemsWrapper.on('click', '.item', function (e) {
@@ -129,10 +157,12 @@
 		utils.modal.on('change:values', function (modal, values) {
 			if (!modal.get('edit')) {
 				utils.addNewItem(values);
-				utils.toogleItemsWrapper();
+				utils.toogleNodes();
 			} else {
 				utils.editItem(utils.modal.get('itemRef'), values);
 			}
+
+			nodes.$optionWrapper.trigger('change'); // for customizer
 		});
 
 		utils.init();
